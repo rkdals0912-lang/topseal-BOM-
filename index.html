@@ -2,10 +2,13 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Batch Sheet 계산 및 원재료 표준화 시뮬레이터</title>
+  <style>
+    :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  </style>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap');
     body {
@@ -551,6 +554,12 @@
             <label class="text-xs text-slate-400">목표 생산수량</label>
             <input type="number" id="bom-target-qty-input" value="1" min="0" step="1" oninput="onBomTargetQtyChange(this.value)" class="w-28 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-white font-mono focus:border-amber-500 outline-none">
             <span class="text-[10px] text-slate-500">(배수 <span id="bom-multiplier-display" class="font-mono text-amber-300">x1</span>)</span>
+            <button onclick="applyBomToNormalMaterials()" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center gap-1.5 shadow">
+              <i class="fa-solid fa-vial"></i> 정규원재료 탭에 적용
+            </button>
+            <button onclick="applyBomToReclaimedMaterials()" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5 shadow">
+              <i class="fa-solid fa-recycle"></i> 부적합품/장기재고 탭에 적용
+            </button>
             <button onclick="printBomBatchSheet()" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center gap-1.5 shadow">
               <i class="fa-solid fa-print"></i> 이 BOM 배치시트 인쇄 (xlsx 양식)
             </button>
@@ -1903,6 +1912,68 @@
 
     function getSelectedProduct() {
       return state.productDb.find(p => productKey(p) === state.selectedProductKey) || null;
+    }
+
+    // ======================================================================
+    // BOM 검색 결과 → 정규원재료 / 부적합품·장기재고 탭 자동 적용
+    // ======================================================================
+    function guessMaterialCategory(code, name) {
+      const s = `${code || ''} ${name || ''}`.toLowerCase();
+      if (/안료|색소|pigment|paste/.test(s)) return 'pigment';
+      if (/촉매|catalyst|dbtdl/.test(s)) return 'catalyst';
+      if (/가교|crosslink|mtms|vtms/.test(s)) return 'crosslinker';
+      if (/접착|adhesion|kbm|실란/.test(s)) return 'adhesion_promoter';
+      if (/가소제|plasticizer/.test(s)) return 'plasticizer';
+      if (/폴리머|polymer|pdms|base/.test(s)) return 'polymer';
+      if (/탄칼|caco3|filler|충전/.test(s)) return 'filler';
+      return 'additive';
+    }
+    function guessIsPigment(code, name) {
+      return guessMaterialCategory(code, name) === 'pigment';
+    }
+    function flattenBomMaterials(p) {
+      return (p.steps || []).flatMap(s => s.materials || []);
+    }
+
+    function applyBomToNormalMaterials() {
+      const p = getSelectedProduct();
+      if (!p) { alert('먼저 BOM 검색 결과에서 제품을 선택해주세요.'); return; }
+      const flatMats = flattenBomMaterials(p);
+      if (flatMats.length === 0) { alert('이 BOM에는 계량된 원재료가 없습니다.'); return; }
+      const totalKg = flatMats.reduce((a, m) => a + (m.stdKg || 0), 0) || 1;
+      state.materials = flatMats.map((m, idx) => ({
+        id: `m_bom_${idx}_${Date.now()}`,
+        code: m.code || '',
+        name: m.name || '',
+        category: guessMaterialCategory(m.code, m.name),
+        isPigment: guessIsPigment(m.code, m.name),
+        packageUnit: '25kg 지대',
+        bagWeightKg: 25,
+        baseRatioPct: (m.stdKg || 0) / totalKg * 100,
+        manualOverrideKg: null
+      }));
+      switchTab('normal');
+      render();
+      alert(`"${p.name}" BOM의 원재료 ${state.materials.length}종을 정규원재료 탭에 적용했습니다.\n(원재료 구성비는 표준투입량 비율로 자동 환산되었습니다. 색소/카테고리 자동 추정 결과를 확인해주세요.)`);
+    }
+
+    function applyBomToReclaimedMaterials() {
+      const p = getSelectedProduct();
+      if (!p) { alert('먼저 BOM 검색 결과에서 제품을 선택해주세요.'); return; }
+      const flatMats = flattenBomMaterials(p);
+      if (flatMats.length === 0) { alert('이 BOM에는 계량된 원재료가 없습니다.'); return; }
+      state.reclaimedMaterials = flatMats.map((m, idx) => ({
+        id: `r_bom_${idx}_${Date.now()}`,
+        lotNo: '',
+        name: m.name || '',
+        source: `BOM(${p.code || p.name})에서 적용됨`,
+        quantityKg: 0,
+        testStatus: 'conditional',
+        notes: m.code ? `원재료코드: ${m.code} · 로트번호/재고수량을 직접 입력해주세요.` : '로트번호/재고수량을 직접 입력해주세요.'
+      }));
+      switchTab('reclaim');
+      render();
+      alert(`"${p.name}" BOM의 원재료 ${state.reclaimedMaterials.length}종을 부적합품/장기재고 탭에 적용했습니다.\n각 항목의 로트번호와 실제 재고수량(kg)을 입력해주세요.`);
     }
 
     // 목표 생산수량을 입력하면 기준생산수량(basisQty) 대비 배수를 자동 계산
