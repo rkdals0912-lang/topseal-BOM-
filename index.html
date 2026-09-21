@@ -116,6 +116,12 @@
 
     <!-- Main Simulator Grid -->
     <div id="simulator-view" class="space-y-6">
+      <!-- 현재 적용된 BOM/제품명 표시 -->
+      <div id="applied-bom-banner" class="hidden p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs flex items-center gap-2">
+        <i class="fa-solid fa-flask text-indigo-400"></i>
+        <span>현재 적용된 BOM: <strong id="applied-bom-name" class="text-white"></strong></span>
+      </div>
+
       <!-- Dashboard Summary Cards -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <!-- Card 1: Target EA & Packaging -->
@@ -721,6 +727,7 @@
       targetQuantityEa: 3000,
       isPigmentExcludedMode: false,
       activeOverrideId: null,
+      appliedBomLabel: null,
       materials: [
         { id: 'm1', code: 'RM-PDMS-107', name: 'Base Polymer 107 (20,000 cSt)', category: 'polymer', isPigment: false, packageUnit: '1,000L IBC', bagWeightKg: 1000, baseRatioPct: 38.0, manualOverrideKg: null },
         { id: 'm2', code: 'RM-PDMS-100', name: 'Plasticizer Dimethicone 100 cSt', category: 'plasticizer', isPigment: false, packageUnit: '200kg Drum', bagWeightKg: 200, baseRatioPct: 15.0, manualOverrideKg: null },
@@ -858,6 +865,18 @@
     // --- Render Functions ---
     function render() {
       const calc = compute();
+
+      // 현재 적용된 BOM/제품명 배너
+      const appliedBanner = document.getElementById('applied-bom-banner');
+      const appliedName = document.getElementById('applied-bom-name');
+      if (appliedBanner && appliedName) {
+        if (state.appliedBomLabel) {
+          appliedBanner.classList.remove('hidden');
+          appliedName.textContent = state.appliedBomLabel;
+        } else {
+          appliedBanner.classList.add('hidden');
+        }
+      }
 
       // Dashboards
       document.getElementById('dash-target-ea').innerText = Number(calc.finalTargetEa).toLocaleString('ko-KR');
@@ -1579,6 +1598,7 @@
 
           if (newMaterials.length > 0) {
             state.materials = newMaterials;
+            state.appliedBomLabel = `CSV 가져옴: ${file.name}`;
             const historyItems = getStorageHistory();
             const newItem = {
               id: 'hist_' + Date.now(),
@@ -1952,6 +1972,7 @@
         baseRatioPct: (m.stdKg || 0) / totalKg * 100,
         manualOverrideKg: null
       }));
+      state.appliedBomLabel = `${p.name} · ${p.code || '-'}${p.bomVersion ? ' · ' + p.bomVersion : ''}`;
       switchTab('normal');
       render();
       alert(`"${p.name}" BOM의 원재료 ${state.materials.length}종을 정규원재료 탭에 적용했습니다.\n(원재료 구성비는 표준투입량 비율로 자동 환산되었습니다. 색소/카테고리 자동 추정 결과를 확인해주세요.)`);
@@ -1971,6 +1992,7 @@
         testStatus: 'conditional',
         notes: m.code ? `원재료코드: ${m.code} · 로트번호/재고수량을 직접 입력해주세요.` : '로트번호/재고수량을 직접 입력해주세요.'
       }));
+      state.appliedBomLabel = `${p.name} · ${p.code || '-'}${p.bomVersion ? ' · ' + p.bomVersion : ''} (재생배합용)`;
       switchTab('reclaim');
       render();
       alert(`"${p.name}" BOM의 원재료 ${state.reclaimedMaterials.length}종을 부적합품/장기재고 탭에 적용했습니다.\n각 항목의 로트번호와 실제 재고수량(kg)을 입력해주세요.`);
