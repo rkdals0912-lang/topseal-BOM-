@@ -536,6 +536,13 @@
           <button id="btn-download-ecount" onclick="downloadEcountBomCsv()" disabled class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-700/40 text-emerald-300/50 border border-emerald-600/30 transition flex items-center gap-1.5 cursor-not-allowed">
             <i class="fa-solid fa-file-export"></i> 선택된 제품 ECOUNT 버전 다운로드 (중복합산)
           </button>
+          <span class="w-px h-5 bg-slate-700 mx-1"></span>
+          <button onclick="downloadAllBomCsv()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-950/60 hover:bg-amber-900 text-amber-300 border border-amber-500/40 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-download"></i> BOM 전체 다운받기 (MES 원본)
+          </button>
+          <button onclick="downloadAllEcountBomCsv()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-violet-950/60 hover:bg-violet-900 text-violet-300 border border-violet-500/40 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-file-export"></i> ECOUNT 버전 BOM 전체 다운받기 (중복합산)
+          </button>
           <span id="mes-upload-status" class="text-[11px] text-slate-400"></span>
           <span id="supabase-status" class="text-[11px] px-2 py-1 rounded border border-slate-700 text-slate-400">Supabase 연결 확인 중...</span>
           <button onclick="loadBomProductsFromSupabase(true)" class="px-2.5 py-1.5 text-[11px] rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600">DB 새로고침</button>
@@ -2216,13 +2223,14 @@
     }
 
     // ECOUNT는 동일 BOM 내 소모품목 중복 등록 불가 → 소모품목코드(없으면 소모품목명) 기준으로 합산하여 1행으로 병합
-    function buildEcountRows(product) {
+    function buildEcountRows(product, multiplier) {
+      const mult = (multiplier == null) ? 1 : multiplier;
       const merged = {};
       const order = [];
       product.steps.forEach(step => {
         step.materials.forEach(mat => {
           const key = (mat.code && mat.code.trim()) ? ('C:' + mat.code.trim()) : ('N:' + mat.name.trim());
-          const appliedQty = mat.stdKg * state.bomMultiplier;
+          const appliedQty = mat.stdKg * mult;
           if (!merged[key]) {
             merged[key] = { code: mat.code || '', name: mat.name, qty: 0 };
             order.push(key);
@@ -2236,7 +2244,7 @@
     function downloadEcountBomCsv() {
       const p = getSelectedProduct();
       if (!p) return;
-      const rows = buildEcountRows(p);
+      const rows = buildEcountRows(p, state.bomMultiplier);
       const totalRows = p.steps.reduce((a, s) => a + s.materials.length, 0);
       const dupCount = totalRows - rows.length;
       const targetQty = (p.basisQty || 1) * state.bomMultiplier;
@@ -2251,6 +2259,50 @@
       } else {
         alert('중복 소모품목이 없어 그대로 변환되었습니다.');
       }
+    }
+
+    // ======================================================================
+    // 전체 BOM 일괄 다운로드 (MES 원본 그대로 / ECOUNT 병합 버전)
+    // Single Source of Truth(state.productDb)를 다운로드 시점에만 시스템별 규칙으로 변환한다.
+    // - MES: 동일 소모품목이 여러 행이어도 합산하지 않고 원본 그대로 출력
+    // - ECOUNT: 제품(BOM) 단위로 동일 소모품목코드(코드 없으면 명) 기준 자동 합산
+    // ======================================================================
+    function downloadAllBomCsv() {
+      const products = state.productDb || [];
+      if (products.length === 0) { alert('등록된 BOM이 없습니다.'); return; }
+      let csv = '생산품목코드,생산품목명,생산품BOM버전,기본BOM여부,생산수량,소모품목코드,소모품목명,소모수량\n';
+      let rowCount = 0;
+      products.forEach(p => {
+        const targetQty = p.basisQty || 1;
+        p.steps.forEach(step => {
+          step.materials.forEach(mat => {
+            csv += `${p.code || ''},${p.name || ''},${p.bomVersion || ''},${p.isDefaultBom ? 'Y' : 'N'},${fmt(targetQty, 4)},${mat.code || ''},${mat.name || ''},${fmt(mat.stdKg || 0, 4)}\n`;
+            rowCount++;
+          });
+        });
+      });
+      downloadTextFile(`MES_BOM_전체다운로드_${new Date().toISOString().slice(0,10)}.csv`, '\uFEFF' + csv);
+      alert(`전체 BOM ${products.length}개 제품, 소모품목 ${rowCount}행을 MES 원본 그대로 다운로드했습니다. (동일 소모품목 중복 행도 병합하지 않고 그대로 유지)`);
+    }
+
+    function downloadAllEcountBomCsv() {
+      const products = state.productDb || [];
+      if (products.length === 0) { alert('등록된 BOM이 없습니다.'); return; }
+      let csv = '생산품목코드,생산품목명,생산품BOM버전,기본BOM여부,생산수량,소모품목코드,소모품목명,소모수량\n';
+      let rowCount = 0;
+      let totalDup = 0;
+      products.forEach(p => {
+        const targetQty = p.basisQty || 1;
+        const totalRows = p.steps.reduce((a, s) => a + s.materials.length, 0);
+        const rows = buildEcountRows(p, 1);
+        totalDup += (totalRows - rows.length);
+        rows.forEach(r => {
+          csv += `${p.code || ''},${p.name || ''},${p.bomVersion || ''},${p.isDefaultBom ? 'Y' : 'N'},${fmt(targetQty, 4)},${r.code},${r.name},${fmt(r.qty, 4)}\n`;
+          rowCount++;
+        });
+      });
+      downloadTextFile(`ECOUNT_BOM_전체다운로드_${new Date().toISOString().slice(0,10)}.csv`, '\uFEFF' + csv);
+      alert(`전체 BOM ${products.length}개 제품, ECOUNT용 소모품목 ${rowCount}행을 다운로드했습니다. (동일 소모품목 ${totalDup}건 자동 합산됨)`);
     }
 
     // --- 배치시트 인쇄 (업로드된 xlsx 양식과 동일한 구조로 재현) ---
