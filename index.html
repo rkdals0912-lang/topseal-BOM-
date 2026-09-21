@@ -34,6 +34,16 @@
     @page { size: A4; margin: 10mm; }
   </style>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  
+<script>
+const SUPABASE_URL = 'https://ixpylhurdtytzbdxslcn.supabase.co/rest/v1/';
+const SUPABASE_KEY = 'sb_publishable_LR-tApZSWHpezl-vhb4MHA_QsLShem_';
+
+const supabase = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+);
+</script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen">
   <div id="app" class="max-w-7xl mx-auto px-4 py-6 space-y-6">
