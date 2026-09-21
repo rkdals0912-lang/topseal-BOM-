@@ -1263,7 +1263,7 @@
       const file = event.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = function(e) {
+      reader.onload = async function(e) {
         const text = e.target.result;
         alert('CSV 파일이 성공적으로 읽혔습니다. 총 ' + text.split('\n').length + '행 감지됨. 표준 마스터와 별칭 사전에 등록되었습니다.');
       };
@@ -2022,7 +2022,7 @@
       const file = event.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = function(e) {
+      reader.onload = async function(e) {
         try {
           const rows = parseCsvSmart(e.target.result);
           if (rows.length < 2) throw new Error('데이터 행이 없습니다.');
