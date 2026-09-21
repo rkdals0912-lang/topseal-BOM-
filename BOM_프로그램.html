@@ -1,0 +1,2296 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Batch Sheet 계산 및 원재료 표준화 시뮬레이터</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+    }
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { 
+      -webkit-appearance: none; 
+      margin: 0; 
+    }
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      body { background: white !important; color: black !important; }
+      .shadow-sm, .shadow-md, .shadow-lg { box-shadow: none !important; border: 1px solid #cbd5e1 !important; }
+    }
+    /* When printing an exact-format BOM batch sheet, hide the whole app UI and show only #print-sheet */
+    body.printing-bom-sheet #app > *:not(#print-sheet) { display: none !important; }
+    body.printing-bom-sheet #print-sheet { display: block !important; }
+    #print-sheet table { border-collapse: collapse; width: 100%; }
+    #print-sheet td, #print-sheet th { border: 1px solid #000; padding: 3px 5px; font-size: 10.5px; vertical-align: top; }
+    #print-sheet .bs-title { font-size: 18px; font-weight: 800; text-align: center; }
+    #print-sheet .bs-approve-box { border: 1px solid #000; width: 60px; height: 44px; text-align: center; font-size: 10px; }
+    #print-sheet .bs-step-title { background: #eef0f3; font-weight: 700; }
+    #print-sheet .bs-mat-head { background: #dfe3e8; font-weight: 700; text-align: center; }
+    @page { size: A4; margin: 10mm; }
+  </style>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+  <div id="app" class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <!-- Header -->
+    <header class="flex flex-col md:flex-row md:items-center md:justify-between pb-4 border-b border-slate-800 gap-4">
+      <div>
+        <div class="flex items-center gap-3">
+          <span class="p-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xl shadow-lg shadow-indigo-500/20">
+            <i class="fa-solid fa-flask-vial"></i>
+          </span>
+          <div>
+            <h1 class="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
+              Batch Sheet 계산 및 원재료 표준화 시뮬레이터
+              <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                현장 실시간 연동
+              </span>
+            </h1>
+            <p class="text-xs text-slate-400 mt-0.5">
+              실리콘 실란트 및 화학 제품 제조 현장 전용 배치 계산 • 비중/로스 자동 반영 • 재생배합 및 역산(Inverse) 엔진
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 no-print">
+        <button onclick="openHistoryDrawer()" class="px-3.5 py-2 text-xs font-semibold rounded-lg bg-indigo-600/30 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/50 transition flex items-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i> 최근 기록 (<span id="history-badge-count">0</span>)
+        </button>
+        <button onclick="handlePrintClick()" class="px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-print"></i> 배치시트 인쇄
+        </button>
+        <button onclick="exportCsv()" class="px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-file-excel text-emerald-400"></i> CSV 내보내기
+        </button>
+        <button onclick="resetAllOverrides()" class="px-3.5 py-2 text-xs font-semibold rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-rotate-left"></i> 역산 초기화
+        </button>
+      </div>
+    </header>
+
+    <!-- Top Tab Navigation -->
+    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+      <div class="flex items-center gap-2">
+        <button id="tab-normal-btn" onclick="switchTab('normal')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30">
+          <i class="fa-solid fa-industry"></i> [생산배합 탭] 정규 원재료
+        </button>
+        <button id="tab-reclaim-btn" onclick="switchTab('reclaim')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i class="fa-solid fa-recycle text-emerald-400"></i> [재생배합 탭] 부적합품/장기재고 투입
+          <span id="reclaim-badge-count" class="hidden text-xs bg-emerald-500 text-slate-950 font-extrabold px-2 py-0.5 rounded-full">0kg</span>
+        </button>
+        <button id="tab-master-btn" onclick="switchTab('master')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i class="fa-solid fa-database text-cyan-400"></i> 원재료 표준화 & 엑셀 마스터
+        </button>
+        <button id="tab-bom-btn" onclick="switchTab('bom')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i class="fa-solid fa-magnifying-glass text-amber-400"></i> BOM 검색 / 배치시트 인쇄
+        </button>
+        <button id="tab-batchmaster-btn" onclick="switchTab('batchmaster')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i class="fa-solid fa-file-excel text-emerald-400"></i> Batch Sheet Master
+        </button>
+      </div>
+      <div class="text-xs text-slate-400 hidden lg:block">
+        현재 모드: <span id="current-mode-label" class="font-bold text-indigo-300">정규 생산 배합</span>
+      </div>
+    </div>
+
+    <!-- Active Override Banner if any -->
+    <div id="override-alert-banner" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-circle-exclamation text-amber-400 text-sm"></i>
+        <span>포장 단위 역산(Inverse Calculation) 활성화됨: <strong><span id="override-mat-name"></span></strong> 원료가 <strong><span id="override-mat-kg"></span>kg</strong>으로 고정되어 전체 배치 총량이 역산되었습니다.</span>
+      </div>
+      <button onclick="resetAllOverrides()" class="underline text-amber-300 hover:text-white font-bold ml-4">
+        역산 해제 (원래 계산치 복원)
+      </button>
+    </div>
+
+    <!-- Main Simulator Grid -->
+    <div id="simulator-view" class="space-y-6">
+      <!-- Dashboard Summary Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Card 1: Target EA & Packaging -->
+        <div class="bg-slate-800/80 backdrop-blur border border-slate-700/70 p-4 rounded-xl shadow-sm relative overflow-hidden">
+          <div class="text-xs font-semibold text-slate-400 flex items-center justify-between">
+            <span>목표 완제품 수량</span>
+            <i class="fa-solid fa-box-open text-indigo-400"></i>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span id="dash-target-ea" class="text-3xl font-extrabold text-white">3,000</span>
+            <span class="text-sm font-semibold text-slate-400">ea</span>
+          </div>
+          <div class="mt-2 text-xs text-slate-400 border-t border-slate-700/60 pt-2 flex justify-between">
+            <span>포장: <strong id="dash-pkg-name" class="text-slate-200">카트리지 300ml</strong></span>
+            <span>비중: <strong id="dash-sg-val" class="text-slate-200">1.25</strong></span>
+          </div>
+        </div>
+
+        <!-- Card 2: Net weight & Packed Net Total -->
+        <div class="bg-slate-800/80 backdrop-blur border border-slate-700/70 p-4 rounded-xl shadow-sm relative overflow-hidden">
+          <div class="text-xs font-semibold text-slate-400 flex items-center justify-between">
+            <span>단위 정미중량 & 필요정미량</span>
+            <i class="fa-solid fa-weight-scale text-cyan-400"></i>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span id="dash-unit-kg" class="text-2xl font-extrabold text-cyan-300">0.375</span>
+            <span class="text-xs text-slate-400">kg/ea</span>
+          </div>
+          <div class="mt-2 text-xs text-slate-400 border-t border-slate-700/60 pt-2 flex justify-between">
+            <span>필요 포장 정미총량:</span>
+            <strong id="dash-packed-net-kg" class="text-cyan-200 font-bold">1,125.00 kg</strong>
+          </div>
+        </div>
+
+        <!-- Card 3: Loss & Yield Analysis -->
+        <div class="bg-slate-800/80 backdrop-blur border border-slate-700/70 p-4 rounded-xl shadow-sm relative overflow-hidden">
+          <div class="text-xs font-semibold text-slate-400 flex items-center justify-between">
+            <span>공정 수율 및 로스(Loss)</span>
+            <i class="fa-solid fa-chart-pie text-amber-400"></i>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span id="dash-loss-pct" class="text-2xl font-extrabold text-amber-300">6.0%</span>
+            <span class="text-xs text-slate-400">(수율 <strong id="dash-yield-pct" class="text-emerald-400">94.0%</strong>)</span>
+          </div>
+          <div class="mt-2 text-xs text-slate-400 border-t border-slate-700/60 pt-2 flex justify-between">
+            <span>제조반 <strong id="dash-mfg-loss" class="text-slate-200">3%</strong> + 포장반 <strong id="dash-pkg-loss" class="text-slate-200">3%</strong></span>
+            <span>로스량: <strong id="dash-loss-kg" class="text-amber-200">71.81 kg</strong></span>
+          </div>
+        </div>
+
+        <!-- Card 4: Production Batch vs Total Batch -->
+        <div class="bg-gradient-to-br from-indigo-900/60 to-slate-800 border-2 border-indigo-500/40 p-4 rounded-xl shadow-lg relative overflow-hidden">
+          <div class="text-xs font-bold text-indigo-300 flex items-center justify-between">
+            <span>Total vs 생산 Batch Size</span>
+            <i class="fa-solid fa-calculator text-indigo-300"></i>
+          </div>
+          <div class="mt-1 flex flex-col">
+            <div class="flex items-baseline justify-between">
+              <span class="text-xs text-slate-300">Total Batch (총량):</span>
+              <span id="dash-total-batch" class="text-xl font-black text-emerald-400">1,196.81 kg</span>
+            </div>
+            <div class="flex items-baseline justify-between border-t border-indigo-500/30 pt-1 mt-1">
+              <span class="text-xs text-slate-300">생산 Batch (신규):</span>
+              <span id="dash-prod-batch" class="text-xl font-black text-white">1,196.81 kg</span>
+            </div>
+          </div>
+          <div id="dash-reclaim-row" class="hidden mt-1 text-[11px] text-emerald-300 flex justify-between border-t border-indigo-500/30 pt-1">
+            <span>재생/회수 투입 감면:</span>
+            <strong id="dash-reclaim-kg" class="font-extrabold">-0.00 kg</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls & Parameter Config Section -->
+      <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-indigo-400"></i> 공정 파라미터 및 포장 규격 설정
+          </h2>
+          <div class="flex items-center gap-3">
+            <!-- Preset Selector -->
+            <label class="text-xs text-slate-400">표준 배합 레시피:</label>
+            <select id="preset-select" onchange="loadPreset(this.value)" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none">
+              <option value="neutral-300-cartridge">중성 건축용 비초산 실리콘 (300ml 카트리지)</option>
+              <option value="acetoxy-280-cartridge">초산형 속경화 유리용 실리콘 (280ml 카트리지)</option>
+              <option value="ms-500-sausage">고신율 변성실리콘 MS실란트 (500ml 소시지)</option>
+              <option value="bulk-drum-200">공업용 원액 벌크 실리콘 (200kg 드럼)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+          <!-- Parameter 1: Specific Gravity (비중) -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
+              반제품 비중 (Specific Gravity)
+              <span class="text-[10px] text-slate-400 bg-slate-700/60 px-1.5 py-0.5 rounded">기본 1.25</span>
+            </label>
+            <div class="relative">
+              <input type="number" id="input-sg" step="0.01" min="0.8" max="2.5" value="1.25" oninput="onSgChange(this.value)" onblur="onSgBlur(this)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+              <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">g/cm³</span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">부피(ml) x 비중 = 1개당 무게(g)</p>
+          </div>
+
+          <!-- Parameter 2: Packaging Spec Dropdown -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">
+              포장 형태 및 규격 선택
+            </label>
+            <select id="select-packaging" onchange="onPackagingChange(this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none">
+              <option value="cartridge-270">카트리지 270ml (제조3% + 포장3% = 총 6% 로스)</option>
+              <option value="cartridge-280">카트리지 280ml (제조3% + 포장3% = 총 6% 로스)</option>
+              <option value="cartridge-300" selected>카트리지 300ml (제조3% + 포장3% = 총 6% 로스)</option>
+              <option value="sausage-500">소시지 500ml (제조3% + 포장3% = 총 6% 로스)</option>
+              <option value="sausage-600">소시지 600ml (제조3% + 포장3% = 총 6% 로스)</option>
+              <option value="drum-bulk">공드럼 벌크 200kg (제조3%만 반영, 포장0%)</option>
+            </select>
+            <p id="pkg-loss-description" class="text-[11px] text-amber-300/80 mt-1">제조반 로스 3% + 포장반 로스 3% = 총 6% 로스 자동 가산</p>
+          </div>
+
+          <!-- Parameter 3: Target Quantity (ea) -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>목표 완제품 수량</span>
+              <span class="text-[10px] text-indigo-300">정방향 기준</span>
+            </label>
+            <div class="relative">
+              <input type="number" id="input-target-ea" min="1" step="10" value="3000" oninput="onTargetEaChange(this.value)" onblur="onTargetEaBlur(this)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+              <span class="absolute right-3 top-2.5 text-xs text-slate-400">ea</span>
+            </div>
+            <div class="flex items-center gap-1 mt-1">
+              <button type="button" onclick="quickSetEa(1000)" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 hover:bg-slate-700 text-slate-300">1천</button>
+              <button type="button" onclick="quickSetEa(2500)" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 hover:bg-slate-700 text-slate-300">2.5천</button>
+              <button type="button" onclick="quickSetEa(3000)" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 hover:bg-slate-700 text-slate-300">3천</button>
+              <button type="button" onclick="quickSetEa(5000)" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 hover:bg-slate-700 text-slate-300">5천</button>
+            </div>
+          </div>
+
+          <!-- Parameter 4: Pigment Exclusion Mode Toggle Switch -->
+          <div class="flex flex-col justify-between">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">
+                색소 제외 100% 함량 계산 모드
+              </label>
+              <p class="text-[11px] text-slate-400 leading-tight">
+                체크 시 색소류를 제외한 정규 원료 합계가 100.00%로 환산
+              </p>
+            </div>
+            <div class="pt-2">
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="toggle-pigment-exclude" onchange="onTogglePigmentExclude(this.checked)" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                <span id="pigment-toggle-status" class="ml-3 text-xs font-bold text-slate-300">
+                  해제 (기존 비율 유지)
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Batch Sheet Materials Table -->
+      <div class="bg-slate-800/90 border border-slate-700 rounded-xl overflow-hidden shadow-sm">
+        <div class="p-4 border-b border-slate-700 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-table-list text-indigo-400"></i> 투입량 상/하한 관리 명세서 (Batch Sheet)
+              <span class="text-xs font-normal text-slate-400">
+                • 기준 투입량(kg)을 직접 수정하면 해당 원료 포장 단위 기준으로 전체 배치가 자동 역산됩니다.
+              </span>
+            </h3>
+          </div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              허용공차: ±1.0% (하한 0.99 / 상한 1.01)
+            </span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-900/80 text-slate-400 font-semibold border-b border-slate-700/80 uppercase tracking-wider">
+                <th class="py-3 px-3">구분 / 색소</th>
+                <th class="py-3 px-3">원재료 코드</th>
+                <th class="py-3 px-3">원재료 명칭</th>
+                <th class="py-3 px-3">포장 규격</th>
+                <th class="py-3 px-3 text-right">기본 배합비(%)</th>
+                <th class="py-3 px-3 text-right text-indigo-300">기준 투입량 (kg, 수정가능)</th>
+                <th class="py-3 px-3 text-right text-slate-400">투입 하한 (x0.99)</th>
+                <th class="py-3 px-3 text-right text-slate-400">투입 상한 (x1.01)</th>
+                <th class="py-3 px-3">현장 포장 환산 / 조치</th>
+              </tr>
+            </thead>
+            <tbody id="materials-tbody" class="divide-y divide-slate-700/50">
+              <!-- Dynamically populated via JS -->
+            </tbody>
+            <tfoot class="bg-slate-900/90 font-bold border-t-2 border-slate-600 text-slate-200">
+              <tr>
+                <td colspan="4" class="py-3 px-3 text-right">합계 (Total Raw Materials):</td>
+                <td id="table-total-ratio" class="py-3 px-3 text-right text-indigo-300 font-mono">100.00%</td>
+                <td id="table-total-kg" class="py-3 px-3 text-right text-emerald-400 font-mono text-sm">0.00 kg</td>
+                <td id="table-total-lower" class="py-3 px-3 text-right text-slate-400 font-mono">0.00 kg</td>
+                <td id="table-total-upper" class="py-3 px-3 text-right text-slate-400 font-mono">0.00 kg</td>
+                <td class="py-3 px-3 text-xs text-slate-400">신규 원자재 투입 소계</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- Regeneration Panel (Only appears or highlighted when in Regeneration Tab) -->
+      <div id="reclaim-panel" class="bg-slate-800/90 border-2 border-emerald-500/40 p-5 rounded-xl space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+              <i class="fa-solid fa-recycle text-base"></i>
+            </span>
+            <div>
+              <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                부적합품 / 장기재고 / 회수 원재료 투입 소진 관리 패널
+                <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  재생배합 활성
+                </span>
+              </h3>
+              <p class="text-xs text-slate-400">
+                재생품 투입량만큼 '생산 Batch Size(신규 투입량)'가 자동으로 차감 감면되어 Total Batch Size를 충족합니다.
+              </p>
+            </div>
+          </div>
+          <button onclick="addReclaimRow()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5 shadow">
+            <i class="fa-solid fa-plus"></i> 재생원료/부적합품 항목 추가
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-900/80 text-slate-400 font-semibold border-b border-slate-700/80">
+                <th class="py-2.5 px-3">Lot No.</th>
+                <th class="py-2.5 px-3">구분 및 출처</th>
+                <th class="py-2.5 px-3">품명 / 설명</th>
+                <th class="py-2.5 px-3 text-right">투입량 (kg)</th>
+                <th class="py-2.5 px-3 text-center">QC 검사 상태</th>
+                <th class="py-2.5 px-3">비고 / 수분점도</th>
+                <th class="py-2.5 px-3 text-center">삭제</th>
+              </tr>
+            </thead>
+            <tbody id="reclaim-tbody" class="divide-y divide-slate-700/50">
+              <!-- Reclaimed rows injected via JS -->
+            </tbody>
+            <tfoot class="bg-slate-900/90 font-bold border-t border-slate-700 text-emerald-300">
+              <tr>
+                <td colspan="3" class="py-2.5 px-3 text-right">재생/회수원료 투입 총합:</td>
+                <td id="reclaim-total-kg" class="py-2.5 px-3 text-right font-mono text-sm">0.00 kg</td>
+                <td colspan="3" class="py-2.5 px-3 text-xs text-slate-400">신규 원료 투입량에서 즉시 공제됨</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Master Data & Excel Upload Section (Tab 3) -->
+    <div id="master-view" class="hidden space-y-6">
+      <div class="bg-slate-800/90 border border-slate-700 p-6 rounded-xl space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700 pb-3">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-file-excel text-emerald-400"></i> 원재료 표준화 마스터 관리 및 엑셀 일괄 업로드
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">
+              현업에서 서로 다른 명칭(예: "탄칼", "중탄", "CCR", "오일")으로 작성된 양식을 표준 코드 및 명칭으로 자동 매핑합니다.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="downloadMasterTemplateCsv()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition flex items-center gap-1.5">
+              <i class="fa-solid fa-download"></i> 표준 양식 다운로드 (CSV)
+            </button>
+          </div>
+        </div>
+
+        <!-- File Drag and Drop Area -->
+        <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-indigo-500 bg-slate-900/50 hover:bg-slate-900/80 rounded-xl p-6 text-center transition cursor-pointer" onclick="document.getElementById('excel-file-input').click()">
+          <input type="file" id="excel-file-input" accept=".csv, .txt" class="hidden" onchange="handleFileUpload(event)">
+          <div class="space-y-2">
+            <i class="fa-solid fa-cloud-arrow-up text-3xl text-indigo-400"></i>
+            <p class="text-sm font-semibold text-slate-200">현업 배합표 / 원재료 엑셀(CSV) 파일을 여기로 드래그하거나 클릭하여 업로드</p>
+            <p class="text-xs text-slate-400">지원 형식: .csv, .txt (컬럼: 원재료명 또는 코드, 배합비 또는 투입량, 포장단위)</p>
+          </div>
+        </div>
+
+        <!-- Alias Matching Simulator Test -->
+        <div class="bg-slate-900/80 border border-slate-700/80 p-4 rounded-xl space-y-2">
+          <label class="block text-xs font-bold text-slate-300">
+            <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> 현장 별칭(Alias) 실시간 표준화 매칭 테스트:
+          </label>
+          <div class="flex items-center gap-2">
+            <input type="text" id="alias-test-input" placeholder="예: 중탄, 탄칼, 107오일, 가교제, 카본 입력 후 확인" oninput="testAliasMatch(this.value)" class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-indigo-500">
+            <span id="alias-test-result" class="text-xs font-mono text-emerald-400 font-semibold px-3 py-2 bg-slate-800 rounded-lg border border-slate-700">
+              결과가 여기에 표시됩니다.
+            </span>
+          </div>
+        </div>
+
+        <!-- Standard Master Material Table -->
+        <div class="space-y-2">
+          <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">표준 원재료 마스터 목록 (현재 등록 12종)</h3>
+          <div class="overflow-x-auto border border-slate-700 rounded-lg">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="bg-slate-900 text-slate-400 font-semibold border-b border-slate-700">
+                  <th class="py-2.5 px-3">표준 코드</th>
+                  <th class="py-2.5 px-3">표준 품명</th>
+                  <th class="py-2.5 px-3">카테고리</th>
+                  <th class="py-2.5 px-3">기본 포장</th>
+                  <th class="py-2.5 px-3">색소여부</th>
+                  <th class="py-2.5 px-3">등록된 현장 별칭(Synonyms)</th>
+                </tr>
+              </thead>
+              <tbody id="master-materials-tbody" class="divide-y divide-slate-800">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Batch Sheet Master -->
+    <div id="batchmaster-view" class="hidden space-y-6">
+      <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-4">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2"><i class="fa-solid fa-file-excel text-emerald-400"></i> Base Sheet Master</h2>
+            <p class="text-[11px] text-slate-400 mt-1">실제 Excel Base 양식을 그대로 보존하고, 제품/BOM별 매핑값만 입력합니다.</p>
+          </div>
+          <label class="cursor-pointer px-3 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">
+            <i class="fa-solid fa-upload mr-1"></i> Base Excel 추가
+            <input id="batchmaster-file" type="file" accept=".xlsx" class="hidden" onchange="handleBaseExcelUpload(event)">
+          </label>
+        </div>
+        <div id="batchmaster-list" class="space-y-2"></div>
+      </div>
+
+      <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-link text-cyan-400 mr-1"></i> 제품 ↔ Base Sheet / Pigment Mapping</h2>
+            <p class="text-[11px] text-slate-400 mt-1">안료명/코드/투입량 셀을 제품별로 지정할 수 있습니다. 예: B17=코드, C17=안료명, D17=투입량</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div><label class="text-[11px] text-slate-400">제품 검색</label><input id="bm-product-search" oninput="renderBatchMappingProducts()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="제품명 / 제품코드"></div>
+          <div><label class="text-[11px] text-slate-400">선택 제품</label><select id="bm-product-select" onchange="loadBatchMappingEditor()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
+        </div>
+        <div id="batchmapping-editor" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-slate-700 pt-4">
+          <div><label class="text-[11px] text-slate-400">Base Sheet</label><select id="bm-base-select" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
+          <div><label class="text-[11px] text-slate-400">Worksheet</label><select id="bm-sheet-select" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
+          <div><label class="text-[11px] text-slate-400">Pigment Code Cell</label><input id="bm-pigment-code-cell" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="B17"></div>
+          <div><label class="text-[11px] text-slate-400">Pigment Name Cell</label><input id="bm-pigment-name-cell" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="C17"></div>
+          <div><label class="text-[11px] text-slate-400">Pigment Qty Cell</label><input id="bm-pigment-qty-cell" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="D17"></div>
+          <div class="flex items-end gap-2"><button onclick="saveBatchMapping()" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">매핑 저장</button><button onclick="clearBatchMapping()" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold">초기화</button></div>
+        </div>
+      </div>
+
+      <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-3">
+        <h2 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-gears text-amber-400 mr-1"></i> Batch Sheet 생성</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div><label class="text-[11px] text-slate-400">현재 선택 BOM</label><div id="bm-selected-product" class="mt-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white">BOM 검색 탭에서 제품을 선택하세요.</div></div>
+          <div><label class="text-[11px] text-slate-400">생산수량(kg)</label><input id="bm-production-qty" type="number" step="0.001" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="예: 1000"></div>
+          <div class="flex items-end"><button onclick="generateBatchSheetFromTemplate()" class="w-full px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"><i class="fa-solid fa-download mr-1"></i> Base 양식으로 Batch Sheet 생성</button></div>
+        </div>
+        <div id="bm-status" class="text-[11px] text-slate-400"></div>
+      </div>
+    </div>
+
+    <!-- BOM Search & Batch Sheet Print Tab -->
+    <div id="bom-view" class="hidden space-y-6">
+      <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-3">
+        <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+          <i class="fa-solid fa-magnifying-glass text-amber-400"></i> 제품명 / 제품코드 다중검색
+        </h2>
+        <p class="text-[11px] text-slate-400">
+          띄어쓰기로 여러 단어를 입력하면 순서 상관없이 모두 포함하는 제품을 찾습니다. 예) <code class="text-amber-300">O200 백색</code> → <code class="text-amber-300">O-200_백색</code> 검색 가능
+        </p>
+        <div class="relative">
+          <input type="text" id="bom-search-input" oninput="renderBomSearchResults()" placeholder="제품명 또는 제품코드 입력 (예: O200 녹색)" class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-amber-500">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-3.5 text-slate-500 text-xs"></i>
+        </div>
+        <div id="bom-search-results" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+      </div>
+
+      <!-- MES <-> ECOUNT BOM 변환 -->
+      <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-3">
+        <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+          <i class="fa-solid fa-right-left text-cyan-400"></i> MES 버전 BOM → ECOUNT 버전 변환
+        </h2>
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          MES에서 내려받은 BOM(CSV)을 업로드하면 제품별로 등록/갱신됩니다. ECOUNT는 동일 BOM 내 원재료 중복 등록이 불가능하므로,
+          <span class="text-amber-300 font-semibold">다운로드 시 동일 원재료 코드(코드가 없으면 원재료명 기준)를 자동 합산</span>하여 1행으로 병합한 ECOUNT용 CSV를 생성합니다.
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="cursor-pointer px-3 py-1.5 text-xs font-bold rounded-lg bg-cyan-950/60 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/40 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-upload"></i> MES BOM 업로드 (CSV)
+            <input type="file" accept=".csv,.txt" class="hidden" onchange="handleMesBomUpload(event)">
+          </label>
+          <button onclick="downloadMesBomTemplateCsv()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-download"></i> MES 업로드 양식(CSV) 받기
+          </button>
+          <button id="btn-download-ecount" onclick="downloadEcountBomCsv()" disabled class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-700/40 text-emerald-300/50 border border-emerald-600/30 transition flex items-center gap-1.5 cursor-not-allowed">
+            <i class="fa-solid fa-file-export"></i> 선택된 제품 ECOUNT 버전 다운로드 (중복합산)
+          </button>
+          <span id="mes-upload-status" class="text-[11px] text-slate-400"></span>
+        </div>
+        <p class="text-[11px] text-slate-500">
+          MES 업로드 CSV 컬럼(헤더명 자동인식): <code>제품코드/품목코드</code>, <code>제품명/품목명</code>, <code>원료코드/자재코드</code>, <code>원료명/자재명</code>, <code>공정단계</code>(선택), <code>투입량/사용수량/표준투입량</code>, <code>단위</code>(선택). 실제 사내 MES 양식 컬럼명이 다르면 알려주시면 매핑을 맞춰드립니다.
+        </p>
+      </div>
+
+      <!-- 선택된 BOM 상세 / 배치시트 편집 -->
+      <div id="bom-detail-panel" class="hidden bg-slate-800/90 border border-slate-700 rounded-xl overflow-hidden">
+        <div class="p-4 border-b border-slate-700 bg-slate-900/60 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-flask text-amber-400"></i>
+              <span id="bom-detail-name">-</span>
+              <span id="bom-detail-code" class="text-xs font-mono px-2 py-0.5 rounded bg-slate-700 text-slate-300"></span>
+            </h3>
+            <p class="text-[11px] text-slate-400 mt-1">기준 생산수량: <span id="bom-detail-basisqty" class="text-slate-300 font-mono"></span> / 환산 Batch Size: <span id="bom-detail-batchsize" class="text-emerald-300 font-mono"></span> kg</p>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <label class="text-xs text-slate-400">목표 생산수량</label>
+            <input type="number" id="bom-target-qty-input" value="1" min="0" step="1" oninput="onBomTargetQtyChange(this.value)" class="w-28 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-white font-mono focus:border-amber-500 outline-none">
+            <span class="text-[10px] text-slate-500">(배수 <span id="bom-multiplier-display" class="font-mono text-amber-300">x1</span>)</span>
+            <button onclick="printBomBatchSheet()" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center gap-1.5 shadow">
+              <i class="fa-solid fa-print"></i> 이 BOM 배치시트 인쇄 (xlsx 양식)
+            </button>
+          </div>
+        </div>
+
+        <!-- Editable meta fields -->
+        <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-3 border-b border-slate-700/70 bg-slate-900/30">
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-400 mb-1">Vessel No.</label>
+            <input id="meta-vesselNo" type="text" onchange="onMetaFieldChange('vesselNo', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500">
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-400 mb-1">Lot No.</label>
+            <input id="meta-lotNo" type="text" onchange="onMetaFieldChange('lotNo', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500">
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-400 mb-1">설계부서</label>
+            <input id="meta-designDept" type="text" onchange="onMetaFieldChange('designDept', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500">
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-400 mb-1">거래선</label>
+            <input id="meta-client" type="text" onchange="onMetaFieldChange('client', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500">
+          </div>
+          <div class="col-span-2">
+            <label class="block text-[10px] font-semibold text-slate-400 mb-1">특이사항</label>
+            <input id="meta-specialNotes" type="text" onchange="onMetaFieldChange('specialNotes', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500">
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-400 mb-1">배합변경사유</label>
+            <input id="meta-changeReasonMix" type="text" onchange="onMetaFieldChange('changeReasonMix', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500">
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-400 mb-1">배합변경일</label>
+            <input id="meta-changeDateMix" type="text" onchange="onMetaFieldChange('changeDateMix', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500">
+          </div>
+        </div>
+
+        <div id="bom-steps-container" class="p-4 space-y-5"></div>
+      </div>
+    </div>
+
+    <!-- Print only sheet -->
+    <div id="print-sheet" class="print-only hidden p-6 text-black">
+      <!-- Printable view template -->
+    </div>
+
+    <!-- History Drawer Modal -->
+    <div id="history-drawer-modal" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-sm justify-end">
+      <div class="bg-slate-900 border-l border-slate-700 w-full max-w-xl h-full flex flex-col shadow-2xl overflow-hidden text-slate-200">
+        <!-- Header -->
+        <div class="p-4 border-b border-slate-700/80 flex items-center justify-between bg-slate-900/95 sticky top-0 z-10">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <i class="fa-solid fa-clock-rotate-left"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-base font-bold text-white tracking-tight">최근 계산 기록 (History)</h2>
+                <span id="history-header-count" class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/40">
+                  0건
+                </span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-0.5">
+                브라우저 localStorage에 보관되며 원클릭으로 당시 배합표 상태를 즉시 복원합니다.
+              </p>
+            </div>
+          </div>
+          <button onclick="closeHistoryDrawer()" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <!-- Cross-PC Transfer Bar -->
+        <div class="px-4 py-2.5 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+          <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+            <i class="fa-solid fa-file-csv text-emerald-400"></i> 타 PC 연동:
+          </span>
+          <div class="flex items-center gap-2">
+            <label class="cursor-pointer px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 transition flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-upload text-emerald-400"></i> CSV/백업 열기
+              <input type="file" accept=".csv, .json, .txt" class="hidden" onchange="handleImportCrossPcFile(event)">
+            </label>
+            <button onclick="exportHistoryBackupJson()" class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5" title="전체 기록 백업 다운로드">
+              <i class="fa-solid fa-download text-slate-400"></i> 전체 백업
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Save Form -->
+        <div class="p-4 border-b border-slate-800 bg-slate-800/40 space-y-2.5">
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-xs text-slate-300 truncate">
+              <span class="text-slate-400">현재 계산:</span> <strong id="hist-current-summary" class="text-white font-medium">카트리지 300ml - 3,000ea</strong>
+            </div>
+            <button onclick="toggleSaveHistoryForm()" class="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center gap-1.5 shrink-0 shadow">
+              <i class="fa-solid fa-bookmark"></i> 현재 결과 저장
+            </button>
+          </div>
+
+          <div id="save-history-form-box" class="hidden space-y-2 bg-slate-900/90 p-3 rounded-xl border border-indigo-500/40">
+            <input type="text" id="hist-input-title" placeholder="기록 명칭 (예: 1호기 회색 실란트 3000ea)" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500">
+            <input type="text" id="hist-input-notes" placeholder="현장 메모 (선택사항, 예: 25kg 탄칼 40포대 맞춤)" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-[11px] text-white outline-none focus:border-indigo-500">
+            <div class="flex justify-end gap-2 pt-1">
+              <button type="button" onclick="toggleSaveHistoryForm()" class="px-2.5 py-1 text-xs rounded bg-slate-800 text-slate-400 hover:text-white">취소</button>
+              <button type="button" onclick="confirmSaveCurrentHistory()" class="px-3.5 py-1 text-xs font-bold rounded bg-indigo-600 hover:bg-indigo-500 text-white shadow">저장하기</button>
+            </div>
+          </div>
+
+          <!-- Search Input -->
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass text-slate-400 absolute left-3 top-2.5 text-xs"></i>
+            <input type="text" id="hist-search-input" oninput="renderHistoryItems()" placeholder="저장된 기록 검색 (명칭, 규격, 메모)..." class="w-full bg-slate-900/90 border border-slate-700/80 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500">
+          </div>
+        </div>
+
+        <!-- History Item List -->
+        <div id="history-items-container" class="flex-1 overflow-y-auto p-4 space-y-3">
+          <!-- Rendered items -->
+        </div>
+
+        <!-- Footer -->
+        <div class="p-3.5 border-t border-slate-800 bg-slate-900/90 flex items-center justify-between text-xs">
+          <span id="history-footer-count" class="text-slate-400 text-[11px]">0건 저장됨</span>
+          <button onclick="clearAllHistory()" class="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-1 hover:underline">
+            <i class="fa-solid fa-trash-can"></i> 전체 기록 비우기
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Application State ---
+    const PACKAGING_SPECS = [
+      { id: 'cartridge-270', name: '카트리지 270ml', category: 'cartridge', volumeMl: 270, mfgLossPct: 3.0, pkgLossPct: 3.0, totalLossPct: 6.0, desc: '제조 3% + 포장 3% = 6% 로스' },
+      { id: 'cartridge-280', name: '카트리지 280ml', category: 'cartridge', volumeMl: 280, mfgLossPct: 3.0, pkgLossPct: 3.0, totalLossPct: 6.0, desc: '제조 3% + 포장 3% = 6% 로스' },
+      { id: 'cartridge-300', name: '카트리지 300ml', category: 'cartridge', volumeMl: 300, mfgLossPct: 3.0, pkgLossPct: 3.0, totalLossPct: 6.0, desc: '제조 3% + 포장 3% = 6% 로스' },
+      { id: 'sausage-500', name: '소시지 500ml', category: 'sausage', volumeMl: 500, mfgLossPct: 3.0, pkgLossPct: 3.0, totalLossPct: 6.0, desc: '제조 3% + 포장 3% = 6% 로스' },
+      { id: 'sausage-600', name: '소시지 600ml', category: 'sausage', volumeMl: 600, mfgLossPct: 3.0, pkgLossPct: 3.0, totalLossPct: 6.0, desc: '제조 3% + 포장 3% = 6% 로스' },
+      { id: 'drum-bulk', name: '공드럼 벌크 200kg', category: 'drum', bulkWeightKg: 200, mfgLossPct: 3.0, pkgLossPct: 0.0, totalLossPct: 3.0, desc: '제조 3%만 반영, 포장 0%' }
+    ];
+
+    const MASTER_DATA = [
+      { code: 'RM-PDMS-107', name: 'Base Polymer 107 (20,000 cSt)', category: 'polymer', defaultPackageUnit: '1,000L IBC', bagWeightKg: 1000, isPigment: false, aliases: ['107폴리머', '베이스폴리머', '베이스오일', 'silanol'] },
+      { code: 'RM-PDMS-100', name: 'Plasticizer Dimethicone 100 cSt', category: 'plasticizer', defaultPackageUnit: '200kg Drum', bagWeightKg: 200, isPigment: false, aliases: ['가소제', '디메치콘', '오일', '100cst'] },
+      { code: 'RM-CC-CCR', name: 'Precipitated CaCO3 (나노 탄칼 CCR)', category: 'filler', defaultPackageUnit: '25kg 지대', bagWeightKg: 25, isPigment: false, aliases: ['나노탄칼', '침강탄칼', 'CCR', '교질탄칼'] },
+      { code: 'RM-CC-325', name: 'Ground CaCO3 (중질 탄칼 325 mesh)', category: 'filler', defaultPackageUnit: '25kg 지대', bagWeightKg: 25, isPigment: false, aliases: ['중탄', '중질탄칼', 'GCC', '325메쉬'] },
+      { code: 'RM-XL-MTMS', name: 'Crosslinker MTMS 99%', category: 'crosslinker', defaultPackageUnit: '200kg Drum', bagWeightKg: 200, isPigment: false, aliases: ['MTMS', '가교제', '메틸트리메톡시실란'] },
+      { code: 'RM-AP-903', name: 'Adhesion Promoter KBM-903', category: 'adhesion_promoter', defaultPackageUnit: '20kg Pail', bagWeightKg: 20, isPigment: false, aliases: ['903', '아미노실란', '접착제', 'KBM903'] },
+      { code: 'RM-CAT-DBTDL', name: 'Catalyst DBTDL 95%', category: 'catalyst', defaultPackageUnit: '20kg Pail', bagWeightKg: 20, isPigment: false, aliases: ['DBTDL', '주석촉매', '틴촉매', '경화촉매'] },
+      { code: 'RM-PIG-BK01', name: 'Carbon Black Paste (흑색 안료)', category: 'pigment', defaultPackageUnit: '20kg Pail', bagWeightKg: 20, isPigment: true, aliases: ['카본', '블랙페이스트', '흑색색소', '카본블랙'] }
+    ];
+
+    let state = {
+      activeTab: 'normal', // 'normal' | 'reclaim' | 'master'
+      specificGravity: 1.25,
+      packagingId: 'cartridge-300',
+      targetQuantityEa: 3000,
+      isPigmentExcludedMode: false,
+      activeOverrideId: null,
+      materials: [
+        { id: 'm1', code: 'RM-PDMS-107', name: 'Base Polymer 107 (20,000 cSt)', category: 'polymer', isPigment: false, packageUnit: '1,000L IBC', bagWeightKg: 1000, baseRatioPct: 38.0, manualOverrideKg: null },
+        { id: 'm2', code: 'RM-PDMS-100', name: 'Plasticizer Dimethicone 100 cSt', category: 'plasticizer', isPigment: false, packageUnit: '200kg Drum', bagWeightKg: 200, baseRatioPct: 15.0, manualOverrideKg: null },
+        { id: 'm3', code: 'RM-CC-CCR', name: 'Precipitated CaCO3 (나노 탄칼 CCR)', category: 'filler', isPigment: false, packageUnit: '25kg 지대', bagWeightKg: 25, baseRatioPct: 22.0, manualOverrideKg: null },
+        { id: 'm4', code: 'RM-CC-325', name: 'Ground CaCO3 (중질 탄칼 325 mesh)', category: 'filler', isPigment: false, packageUnit: '25kg 지대', bagWeightKg: 25, baseRatioPct: 18.0, manualOverrideKg: null },
+        { id: 'm5', code: 'RM-XL-MTMS', name: 'Crosslinker MTMS 99%', category: 'crosslinker', isPigment: false, packageUnit: '200kg Drum', bagWeightKg: 200, baseRatioPct: 4.5, manualOverrideKg: null },
+        { id: 'm6', code: 'RM-AP-903', name: 'Adhesion Promoter KBM-903', category: 'adhesion_promoter', isPigment: false, packageUnit: '20kg Pail', bagWeightKg: 20, baseRatioPct: 1.2, manualOverrideKg: null },
+        { id: 'm7', code: 'RM-CAT-DBTDL', name: 'Catalyst DBTDL', category: 'catalyst', isPigment: false, packageUnit: '20kg Pail', bagWeightKg: 20, baseRatioPct: 0.3, manualOverrideKg: null },
+        { id: 'm8', code: 'RM-PIG-BK01', name: 'Carbon Black Paste (흑색 안료)', category: 'pigment', isPigment: true, packageUnit: '20kg Pail', bagWeightKg: 20, baseRatioPct: 1.0, manualOverrideKg: null }
+      ],
+      reclaimedMaterials: [
+        { id: 'r1', lotNo: 'RE-2026-09A', name: '조색 테스트 부적합품 (Off-Spec Lot)', source: '라인 조색 부적합', quantityKg: 60, testStatus: 'pass', notes: '점도 250k cPs 정상, 수분 280ppm 적합' },
+        { id: 'r2', lotNo: 'ST-2026-03X', name: '동일 Base 장기재고 벌크 (Aged Stock)', source: '저장탱크 바닥 잔량', quantityKg: 40, testStatus: 'conditional', notes: '탈포 후 가교제 추가 요망' }
+      ]
+    };
+
+    // --- Formatters ---
+    function fmt(n, d = 2) {
+      if (isNaN(n)) return '0.00';
+      return Number(n).toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    }
+
+    // --- Calculation Engine ---
+    function compute() {
+      const pkg = PACKAGING_SPECS.find(p => p.id === state.packagingId) || PACKAGING_SPECS[2];
+      const sg = Number(state.specificGravity) || 1.25;
+      
+      let unitNetWeightKg = 0.375;
+      if (pkg.category === 'drum') {
+        unitNetWeightKg = pkg.bulkWeightKg || 200;
+      } else {
+        unitNetWeightKg = ((pkg.volumeMl || 300) / 1000) * sg;
+      }
+
+      const mfgLoss = pkg.mfgLossPct;
+      const pkgLoss = pkg.pkgLossPct;
+      const totalLoss = pkg.totalLossPct;
+      const yieldPct = 100 - totalLoss;
+
+      const isReclaimActive = state.activeTab === 'reclaim';
+      const reclaimedTotalKg = isReclaimActive
+        ? state.reclaimedMaterials.reduce((acc, cur) => acc + (Number(cur.quantityKg) || 0), 0)
+        : 0;
+
+      // Normalize ratios if pigment excluded mode
+      let baseRatioSum = 0;
+      let pigmentRatioSum = 0;
+      state.materials.forEach(m => {
+        if (m.isPigment) pigmentRatioSum += m.baseRatioPct;
+        else baseRatioSum += m.baseRatioPct;
+      });
+
+      const effectiveRatios = {};
+      state.materials.forEach(m => {
+        if (state.isPigmentExcludedMode) {
+          if (m.isPigment) effectiveRatios[m.id] = m.baseRatioPct;
+          else effectiveRatios[m.id] = baseRatioSum > 0 ? (m.baseRatioPct / baseRatioSum) * 100 : m.baseRatioPct;
+        } else {
+          effectiveRatios[m.id] = m.baseRatioPct;
+        }
+      });
+
+      const totalEffectiveRatio = Object.values(effectiveRatios).reduce((a, b) => a + b, 0);
+
+      // Forward calculation for overall batch target
+      const requiredPackedKg = finalTargetEa * unitNetWeightKg;
+      totalBatchKg = requiredPackedKg / (1 - totalLoss / 100);
+      productionBatchKg = Math.max(0, totalBatchKg - reclaimedTotalKg);
+      const totalLossKg = totalBatchKg * (totalLoss / 100);
+
+      const rows = state.materials.map(m => {
+        const effRatio = effectiveRatios[m.id];
+        const fraction = totalEffectiveRatio > 0 ? effRatio / totalEffectiveRatio : 0;
+        const calculatedKg = productionBatchKg * fraction;
+        const isOverridden = m.manualOverrideKg != null && m.manualOverrideKg > 0;
+        const finalKg = isOverridden ? m.manualOverrideKg : calculatedKg;
+        const lowerLimitKg = finalKg * 0.99;
+        const upperLimitKg = finalKg * 1.01;
+
+        // Packaging estimate
+        let pkgEstimate = '';
+        if (m.bagWeightKg && m.bagWeightKg > 1) {
+          const bags = Math.floor(finalKg / m.bagWeightKg);
+          const rem = finalKg % m.bagWeightKg;
+          let unit = '포대';
+          if (m.packageUnit.includes('Pail')) unit = '캔';
+          else if (m.packageUnit.includes('Drum')) unit = '드럼';
+          else if (m.packageUnit.includes('IBC')) unit = 'IBC';
+
+          if (bags > 0 && rem < 0.05) {
+            pkgEstimate = `${bags}${unit} 정량 (${bags * m.bagWeightKg}kg)`;
+          } else if (bags > 0) {
+            pkgEstimate = `${bags}${unit} (${bags * m.bagWeightKg}kg) + 잔량 ${fmt(rem, 1)}kg`;
+          } else {
+            pkgEstimate = `단품 ${fmt(finalKg, 2)}kg`;
+          }
+        } else {
+          pkgEstimate = `${fmt(finalKg, 2)}kg`;
+        }
+
+        return {
+          material: m,
+          effectiveRatio: effRatio,
+          calculatedKg,
+          finalKg,
+          isOverridden,
+          lowerLimitKg,
+          upperLimitKg,
+          pkgEstimate
+        };
+      });
+
+      const overriddenCount = rows.filter(r => r.isOverridden).length;
+
+      return {
+        pkg,
+        sg,
+        unitNetWeightKg,
+        mfgLoss,
+        pkgLoss,
+        totalLoss,
+        yieldPct,
+        finalTargetEa,
+        requiredPackedKg,
+        totalBatchKg,
+        reclaimedTotalKg,
+        productionBatchKg,
+        totalLossKg,
+        overriddenCount,
+        rows,
+        totalEffectiveRatio
+      };
+    }
+
+    // --- Render Functions ---
+    function render() {
+      const calc = compute();
+
+      // Dashboards
+      document.getElementById('dash-target-ea').innerText = Number(calc.finalTargetEa).toLocaleString('ko-KR');
+      document.getElementById('dash-pkg-name').innerText = calc.pkg.name;
+      document.getElementById('dash-sg-val').innerText = calc.sg.toFixed(2);
+      document.getElementById('dash-unit-kg').innerText = calc.unitNetWeightKg.toFixed(4);
+      document.getElementById('dash-packed-net-kg').innerText = fmt(calc.requiredPackedKg) + ' kg';
+      document.getElementById('dash-loss-pct').innerText = calc.totalLoss.toFixed(1) + '%';
+      document.getElementById('dash-yield-pct').innerText = calc.yieldPct.toFixed(1) + '%';
+      document.getElementById('dash-mfg-loss').innerText = calc.mfgLoss.toFixed(1) + '%';
+      document.getElementById('dash-pkg-loss').innerText = calc.pkgLoss.toFixed(1) + '%';
+      document.getElementById('dash-loss-kg').innerText = fmt(calc.totalLossKg) + ' kg';
+
+      document.getElementById('dash-total-batch').innerText = fmt(calc.totalBatchKg) + ' kg';
+      document.getElementById('dash-prod-batch').innerText = fmt(calc.productionBatchKg) + ' kg';
+
+      const reclaimRow = document.getElementById('dash-reclaim-row');
+      const reclaimBadge = document.getElementById('reclaim-badge-count');
+      if (state.activeTab === 'reclaim' && calc.reclaimedTotalKg > 0) {
+        reclaimRow.classList.remove('hidden');
+        document.getElementById('dash-reclaim-kg').innerText = '-' + fmt(calc.reclaimedTotalKg) + ' kg';
+        reclaimBadge.classList.remove('hidden');
+        reclaimBadge.innerText = fmt(calc.reclaimedTotalKg, 0) + ' kg 투입';
+      } else {
+        reclaimRow.classList.add('hidden');
+        reclaimBadge.classList.add('hidden');
+      }
+
+      // Banner for override
+      const banner = document.getElementById('override-alert-banner');
+      if (calc.overriddenCount > 0) {
+        banner.classList.remove('hidden');
+        document.getElementById('override-mat-name').innerText = calc.overriddenCount + '개 원재료';
+        document.getElementById('override-mat-kg').innerText = '개별 수량 고정 (타 원료 비율 유지)';
+      } else {
+        banner.classList.add('hidden');
+      }
+
+      // Materials Table
+      const tbody = document.getElementById('materials-tbody');
+      tbody.innerHTML = '';
+
+      let sumKg = 0;
+      let sumLower = 0;
+      let sumUpper = 0;
+
+      calc.rows.forEach(r => {
+        sumKg += r.finalKg;
+        sumLower += r.lowerLimitKg;
+        sumUpper += r.upperLimitKg;
+
+        const tr = document.createElement('tr');
+        tr.className = r.isOverridden 
+          ? 'bg-amber-500/10 hover:bg-amber-500/20 transition'
+          : 'hover:bg-slate-700/40 transition';
+
+        const isPigment = r.material.isPigment;
+        const typeBadge = isPigment
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30">색소/안료</span>'
+          : '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-700 text-slate-300">정규원료</span>';
+
+        const overrideIndicator = r.isOverridden
+          ? '<span class="text-[10px] text-amber-300 font-bold bg-amber-500/20 px-1.5 py-0.5 rounded ml-1"><i class="fa-solid fa-lock"></i> 역산기준</span>'
+          : '';
+
+        tr.innerHTML = `
+          <td class="py-3 px-3 whitespace-nowrap">${typeBadge}</td>
+          <td class="py-3 px-3 font-mono text-slate-300 text-xs font-semibold">${r.material.code}</td>
+          <td class="py-3 px-3 font-semibold text-white">
+            <div>${r.material.name}</div>
+            <div class="text-[10px] text-slate-400">${r.material.notes || ''}</div>
+          </td>
+          <td class="py-3 px-3 text-slate-300 whitespace-nowrap">
+            <span class="px-2 py-0.5 bg-slate-800 rounded border border-slate-700">${r.material.packageUnit}</span>
+          </td>
+          <td class="py-3 px-3 text-right font-mono text-indigo-300 font-bold">${r.effectiveRatio.toFixed(2)}%</td>
+          <td class="py-3 px-3 text-right">
+            <div class="flex items-center justify-end gap-1.5">
+              <input 
+                type="number" 
+                step="0.1" 
+                value="${r.finalKg.toFixed(2)}"
+                onchange="handleMaterialOverride('${r.material.id}', this.value)"
+                class="w-24 text-right bg-slate-900 border ${r.isOverridden ? 'border-amber-400 ring-1 ring-amber-400 text-amber-300' : 'border-slate-600 text-white'} rounded px-2 py-1 text-xs font-mono font-bold focus:border-indigo-400 outline-none"
+              />
+              <span class="text-slate-400 text-xs">kg</span>
+              ${overrideIndicator}
+            </div>
+          </td>
+          <td class="py-3 px-3 text-right font-mono text-slate-400">${r.lowerLimitKg.toFixed(2)}</td>
+          <td class="py-3 px-3 text-right font-mono text-slate-400">${r.upperLimitKg.toFixed(2)}</td>
+          <td class="py-3 px-3 text-slate-300">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] text-slate-300">${r.pkgEstimate}</span>
+              ${r.isOverridden 
+                ? `<button onclick="clearOverride('${r.material.id}')" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40">해제</button>` 
+                : `<button onclick="snapToNearestBag('${r.material.id}', ${r.finalKg}, ${r.material.bagWeightKg})" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 hover:bg-indigo-600 text-slate-300 hover:text-white transition">포대맞춤</button>`
+              }
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('table-total-ratio').innerText = calc.totalEffectiveRatio.toFixed(2) + '%';
+      document.getElementById('table-total-kg').innerText = fmt(sumKg) + ' kg';
+      document.getElementById('table-total-lower').innerText = fmt(sumLower) + ' kg';
+      document.getElementById('table-total-upper').innerText = fmt(sumUpper) + ' kg';
+
+      // Reclaim Table
+      const rbody = document.getElementById('reclaim-tbody');
+      rbody.innerHTML = '';
+      state.reclaimedMaterials.forEach((item, idx) => {
+        const rtr = document.createElement('tr');
+        rtr.className = 'hover:bg-slate-700/30 transition';
+        rtr.innerHTML = `
+          <td class="py-2.5 px-3 font-mono text-emerald-400 font-bold">${item.lotNo}</td>
+          <td class="py-2.5 px-3 text-slate-300">${item.source}</td>
+          <td class="py-2.5 px-3 font-medium text-white">${item.name}</td>
+          <td class="py-2.5 px-3 text-right">
+            <input type="number" step="1" value="${item.quantityKg}" onchange="updateReclaimKg('${item.id}', this.value)" class="w-20 text-right bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-emerald-300 focus:border-emerald-400 outline-none" />
+            <span class="text-slate-400 text-xs ml-1">kg</span>
+          </td>
+          <td class="py-2.5 px-3 text-center">
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${item.testStatus === 'pass' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}">
+              ${item.testStatus === 'pass' ? 'QC 적합' : '조건부 사용'}
+            </span>
+          </td>
+          <td class="py-2.5 px-3 text-slate-400 text-[11px]">${item.notes}</td>
+          <td class="py-2.5 px-3 text-center">
+            <button onclick="deleteReclaimRow('${item.id}')" class="text-rose-400 hover:text-rose-300 text-xs">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </td>
+        `;
+        rbody.appendChild(rtr);
+      });
+      document.getElementById('reclaim-total-kg').innerText = fmt(calc.reclaimedTotalKg) + ' kg';
+
+      // Master items table
+      const mtbody = document.getElementById('master-materials-tbody');
+      mtbody.innerHTML = '';
+      MASTER_DATA.forEach(m => {
+        const mtr = document.createElement('tr');
+        mtr.className = 'hover:bg-slate-800/60';
+        mtr.innerHTML = `
+          <td class="py-2 px-3 font-mono font-bold text-indigo-300">${m.code}</td>
+          <td class="py-2 px-3 text-white font-medium">${m.name}</td>
+          <td class="py-2 px-3 text-slate-400">${m.category}</td>
+          <td class="py-2 px-3 text-slate-300">${m.defaultPackageUnit}</td>
+          <td class="py-2 px-3">${m.isPigment ? '<span class="text-pink-400 font-bold">색소</span>' : '<span class="text-slate-400">일반</span>'}</td>
+          <td class="py-2 px-3">
+            <div class="flex flex-wrap gap-1">
+              ${m.aliases.map(a => `<span class="bg-slate-800 text-cyan-300 px-1.5 py-0.5 rounded text-[10px] border border-slate-700">${a}</span>`).join('')}
+            </div>
+          </td>
+        `;
+        mtbody.appendChild(mtr);
+      });
+    }
+
+    // --- Tab Switching ---
+    function switchTab(tab) {
+      state.activeTab = tab;
+      const normalBtn = document.getElementById('tab-normal-btn');
+      const reclaimBtn = document.getElementById('tab-reclaim-btn');
+      const masterBtn = document.getElementById('tab-master-btn');
+      const bomBtn = document.getElementById('tab-bom-btn');
+      const batchmasterBtn = document.getElementById('tab-batchmaster-btn');
+      const simView = document.getElementById('simulator-view');
+      const masterView = document.getElementById('master-view');
+      const reclaimPanel = document.getElementById('reclaim-panel');
+      const bomView = document.getElementById('bom-view');
+      const batchmasterView = document.getElementById('batchmaster-view');
+      const modeLabel = document.getElementById('current-mode-label');
+
+      [normalBtn, reclaimBtn, masterBtn, bomBtn, batchmasterBtn].forEach(b => {
+        b.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300';
+      });
+
+      simView.classList.add('hidden');
+      masterView.classList.add('hidden');
+      reclaimPanel.classList.add('hidden');
+      bomView.classList.add('hidden');
+      batchmasterView.classList.add('hidden');
+
+      if (tab === 'normal') {
+        normalBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30';
+        simView.classList.remove('hidden');
+        modeLabel.innerText = '정규 생산 배합 (신규 원자재 100%)';
+        modeLabel.className = 'font-bold text-indigo-300';
+      } else if (tab === 'reclaim') {
+        reclaimBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-emerald-600 text-white shadow-lg shadow-emerald-600/30';
+        simView.classList.remove('hidden');
+        reclaimPanel.classList.remove('hidden');
+        modeLabel.innerText = '재생 배합 (부적합품/장기재고 소진 모드)';
+        modeLabel.className = 'font-bold text-emerald-400';
+      } else if (tab === 'bom') {
+        bomBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-amber-600 text-white shadow-lg shadow-amber-600/30';
+        bomView.classList.remove('hidden');
+        modeLabel.innerText = 'BOM 검색 / 배치시트 인쇄';
+        modeLabel.className = 'font-bold text-amber-300';
+        renderBomSearchResults();
+      } else if (tab === 'batchmaster') {
+        batchmasterBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-emerald-600 text-white shadow-lg shadow-emerald-600/30';
+        batchmasterView.classList.remove('hidden');
+        modeLabel.innerText = 'Batch Sheet Master 관리';
+        modeLabel.className = 'font-bold text-emerald-300';
+        renderBatchMaster();
+        renderBatchMappingProducts();
+      } else {
+        masterBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-cyan-600 text-white shadow-lg shadow-cyan-600/30';
+        masterView.classList.remove('hidden');
+        modeLabel.innerText = '원재료 표준화 마스터 관리';
+        modeLabel.className = 'font-bold text-cyan-300';
+      }
+      render();
+    }
+
+    function handlePrintClick() {
+      if (state.activeTab === 'bom' && state.selectedProductKey) {
+        printBomBatchSheet();
+      } else {
+        window.print();
+      }
+    }
+
+    // --- Actions & Handlers ---
+    function onSgChange(val) {
+      if (val === '' || val === null) return;
+      const parsed = parseFloat(val);
+      if (isNaN(parsed) || parsed <= 0) return;
+      state.specificGravity = parsed;
+      render();
+    }
+
+    function onSgBlur(el) {
+      if (!el.value || isNaN(parseFloat(el.value)) || parseFloat(el.value) <= 0) {
+        el.value = state.specificGravity || 1.25;
+      } else {
+        state.specificGravity = parseFloat(el.value);
+        render();
+      }
+    }
+
+    function onPackagingChange(id) {
+      state.packagingId = id;
+      const desc = document.getElementById('pkg-loss-description');
+      if (id === 'drum-bulk') {
+        desc.innerText = '드럼 벌크 제품: 제조반 로스 3%만 자동 반영 (포장 로스 0%)';
+        desc.className = 'text-[11px] text-emerald-400 mt-1';
+      } else {
+        desc.innerText = '카트리지/소시지류: 제조반 로스 3% + 포장반 로스 3% = 총 6% 로스 자동 가산';
+        desc.className = 'text-[11px] text-amber-300/80 mt-1';
+      }
+      render();
+    }
+
+    function onTargetEaChange(val) {
+      if (val === '' || val === null) return;
+      const parsed = parseInt(val, 10);
+      if (isNaN(parsed) || parsed <= 0) return;
+      state.targetQuantityEa = parsed;
+      state.activeOverrideId = null; // Clear override on explicit target EA change
+      render();
+    }
+
+    function onTargetEaBlur(el) {
+      if (!el.value || isNaN(parseInt(el.value, 10)) || parseInt(el.value, 10) <= 0) {
+        el.value = state.targetQuantityEa || 1000;
+      } else {
+        state.targetQuantityEa = parseInt(el.value, 10);
+        render();
+      }
+    }
+
+    function quickSetEa(val) {
+      document.getElementById('input-target-ea').value = val;
+      onTargetEaChange(val);
+    }
+
+    function onTogglePigmentExclude(checked) {
+      state.isPigmentExcludedMode = checked;
+      const lbl = document.getElementById('pigment-toggle-status');
+      if (checked) {
+        lbl.innerText = '활성 (정규원료 100% 정규화)';
+        lbl.className = 'ml-3 text-xs font-bold text-indigo-400';
+      } else {
+        lbl.innerText = '해제 (기존 비율 유지)';
+        lbl.className = 'ml-3 text-xs font-bold text-slate-400';
+      }
+      render();
+    }
+
+    // Inverse Calculation: Manual Override
+    function handleMaterialOverride(matId, newKg) {
+      const kg = parseFloat(newKg);
+      if (isNaN(kg) || kg <= 0) return;
+      const mat = state.materials.find(m => m.id === matId);
+      if (mat) {
+        mat.manualOverrideKg = kg;
+        state.activeOverrideId = matId;
+        render();
+      }
+    }
+
+    function clearOverride(matId) {
+      const mat = state.materials.find(m => m.id === matId);
+      if (mat) mat.manualOverrideKg = null;
+      if (state.activeOverrideId === matId) state.activeOverrideId = null;
+      render();
+    }
+
+    function resetAllOverrides() {
+      state.materials.forEach(m => m.manualOverrideKg = null);
+      state.activeOverrideId = null;
+      render();
+    }
+
+    function snapToNearestBag(matId, currentKg, bagWeightKg) {
+      if (!bagWeightKg || bagWeightKg <= 1) return;
+      const nearestBags = Math.round(currentKg / bagWeightKg);
+      const snappedKg = Math.max(bagWeightKg, nearestBags * bagWeightKg);
+      handleMaterialOverride(matId, snappedKg);
+    }
+
+    // Reclaim Row Actions
+    function addReclaimRow() {
+      const newId = 'r_' + Date.now();
+      state.reclaimedMaterials.push({
+        id: newId,
+        lotNo: 'REC-' + new Date().toISOString().slice(2,10).replace(/-/g,''),
+        name: '신규 회수 실리콘 원료',
+        source: '라인 퍼징 잔량 / 회수',
+        quantityKg: 50,
+        testStatus: 'pass',
+        notes: '이물질 여과 및 진공 탈포 완료'
+      });
+      render();
+    }
+
+    function updateReclaimKg(id, val) {
+      const item = state.reclaimedMaterials.find(r => r.id === id);
+      if (item) {
+        item.quantityKg = Math.max(0, parseFloat(val) || 0);
+        render();
+      }
+    }
+
+    function deleteReclaimRow(id) {
+      state.reclaimedMaterials = state.reclaimedMaterials.filter(r => r.id !== id);
+      render();
+    }
+
+    // Alias Matching Test
+    function testAliasMatch(input) {
+      const q = (input || '').trim().toLowerCase();
+      const res = document.getElementById('alias-test-result');
+      if (!q) {
+        res.innerText = '원재료 별칭을 입력해보세요.';
+        res.className = 'text-xs font-mono text-slate-400 font-semibold px-3 py-2 bg-slate-800 rounded-lg border border-slate-700';
+        return;
+      }
+      const matched = MASTER_DATA.find(m => 
+        m.name.toLowerCase().includes(q) || 
+        m.code.toLowerCase().includes(q) ||
+        m.aliases.some(a => a.toLowerCase().includes(q))
+      );
+      if (matched) {
+        res.innerText = `[매칭 성공] ${matched.code} | ${matched.name} (${matched.defaultPackageUnit})`;
+        res.className = 'text-xs font-mono text-emerald-400 font-bold px-3 py-2 bg-slate-800 rounded-lg border border-emerald-500/40';
+      } else {
+        res.innerText = '[매칭 실패] 등록된 표준 마스터에 일치하는 항목이 없습니다.';
+        res.className = 'text-xs font-mono text-rose-400 font-semibold px-3 py-2 bg-slate-800 rounded-lg border border-rose-500/40';
+      }
+    }
+
+    // CSV Download
+    function exportCsv() {
+      const calc = compute();
+      let csv = '\uFEFF배치시트 계산서\n';
+      csv += `목표완제품수량,${calc.finalTargetEa} ea,비중,${calc.sg},단위정미중량,${calc.unitNetWeightKg.toFixed(4)} kg\n`;
+      csv += `포장규격,${calc.pkg.name},총로스율,${calc.totalLoss.toFixed(1)}%,수율,${calc.yieldPct.toFixed(1)}%\n`;
+      csv += `Total Batch Size,${calc.totalBatchKg.toFixed(2)} kg,재생투입,${calc.reclaimedTotalKg.toFixed(2)} kg,생산 Batch Size,${calc.productionBatchKg.toFixed(2)} kg\n\n`;
+      csv += '구분,코드,원재료명,포장규격,배합비(%),기준투입량(kg),투입하한(kg),투입상한(kg),포장단위추정\n';
+      calc.rows.forEach(r => {
+        csv += `"${r.material.isPigment ? '색소/안료' : '정규원료'}","${r.material.code}","${r.material.name}","${r.material.packageUnit}",${r.effectiveRatio.toFixed(2)},${r.finalKg.toFixed(2)},${r.lowerLimitKg.toFixed(2)},${r.upperLimitKg.toFixed(2)},"${r.pkgEstimate}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `BatchSheet_${calc.pkg.id}_${calc.finalTargetEa}ea.csv`;
+      a.click();
+    }
+
+    function downloadMasterTemplateCsv() {
+      const template = '\uFEFF원재료코드,표준원재료명칭,카테고리,기본포장규격,단위포장중량kg,색소여부,현장별칭\n'
+        + 'RM-PDMS-107,Base Polymer 107 (20000cSt),polymer,1000L IBC,1000,N,"107폴리머;베이스"\n'
+        + 'RM-CC-CCR,Precipitated CaCO3,filler,25kg 지대,25,N,"나노탄칼;CCR"\n'
+        + 'RM-PIG-BK01,Carbon Black Paste,pigment,20kg Pail,20,Y,"카본;흑색색소"\n';
+      const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'RawMaterial_Master_Template.csv';
+      a.click();
+    }
+
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        alert('CSV 파일이 성공적으로 읽혔습니다. 총 ' + text.split('\n').length + '행 감지됨. 표준 마스터와 별칭 사전에 등록되었습니다.');
+      };
+      reader.readAsText(file);
+    }
+
+    function loadPreset(presetId) {
+      if (presetId === 'neutral-300-cartridge') {
+        state.packagingId = 'cartridge-300';
+        state.specificGravity = 1.25;
+        state.targetQuantityEa = 3000;
+      } else if (presetId === 'acetoxy-280-cartridge') {
+        state.packagingId = 'cartridge-280';
+        state.specificGravity = 1.02;
+        state.targetQuantityEa = 2500;
+      } else if (presetId === 'ms-500-sausage') {
+        state.packagingId = 'sausage-500';
+        state.specificGravity = 1.45;
+        state.targetQuantityEa = 1500;
+      } else if (presetId === 'bulk-drum-200') {
+        state.packagingId = 'drum-bulk';
+        state.specificGravity = 1.28;
+        state.targetQuantityEa = 15;
+      }
+      document.getElementById('input-sg').value = state.specificGravity;
+      document.getElementById('select-packaging').value = state.packagingId;
+      document.getElementById('input-target-ea').value = state.targetQuantityEa;
+      onPackagingChange(state.packagingId);
+      resetAllOverrides();
+    }
+
+    // --- LocalStorage History Manager ---
+    const STORAGE_KEY = 'batch_sheet_history_v1';
+
+    function getStorageHistory() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      return [];
+    }
+
+    function saveStorageHistory(items) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      } catch (e) {
+        console.error(e);
+      }
+      updateHistoryBadge();
+    }
+
+    function updateHistoryBadge() {
+      const items = getStorageHistory();
+      const count = items.length;
+      const b = document.getElementById('history-badge-count');
+      if (b) b.textContent = count;
+      const hb = document.getElementById('history-header-count');
+      if (hb) hb.textContent = count + '건';
+      const fb = document.getElementById('history-footer-count');
+      if (fb) fb.textContent = '총 ' + count + '건 저장됨 (브라우저 로컬 저장소)';
+    }
+
+    function openHistoryDrawer() {
+      const modal = document.getElementById('history-drawer-modal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      const pkg = PACKAGING_SPECS.find(p => p.id === state.packagingId) || PACKAGING_SPECS[2];
+      const sumEl = document.getElementById('hist-current-summary');
+      if (sumEl) sumEl.textContent = pkg.name + ' - ' + Number(state.targetQuantityEa).toLocaleString() + 'ea (SG ' + state.specificGravity + ')';
+
+      const titleInput = document.getElementById('hist-input-title');
+      if (titleInput) titleInput.value = pkg.name + ' ' + Number(state.targetQuantityEa).toLocaleString() + 'ea 배치';
+
+      renderHistoryItems();
+    }
+
+    function closeHistoryDrawer() {
+      const modal = document.getElementById('history-drawer-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+      const formBox = document.getElementById('save-history-form-box');
+      if (formBox) formBox.classList.add('hidden');
+    }
+
+    function toggleSaveHistoryForm() {
+      const formBox = document.getElementById('save-history-form-box');
+      if (formBox) formBox.classList.toggle('hidden');
+    }
+
+    function confirmSaveCurrentHistory() {
+      const titleInput = document.getElementById('hist-input-title');
+      const notesInput = document.getElementById('hist-input-notes');
+      const title = (titleInput && titleInput.value.trim()) || '배합 배치 시뮬레이션';
+      const notes = notesInput ? notesInput.value.trim() : '';
+
+      const { result, pkg } = compute();
+      const historyItems = getStorageHistory();
+
+      const newItem = {
+        id: 'hist_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        savedAt: new Date().toISOString(),
+        title: title,
+        specificGravity: state.specificGravity,
+        selectedPackagingId: state.packagingId,
+        packagingName: pkg.name,
+        targetQuantityEa: result.finalTargetEa,
+        isPigmentExcludedMode: state.isPigmentExcludedMode,
+        totalBatchSizeKg: result.totalBatchKg,
+        productionBatchSizeKg: result.productionBatchKg,
+        regeneratedTotalKg: result.reclaimedTotalKg,
+        unitNetWeightKg: result.unitNetWeightKg,
+        totalLossPct: result.totalLoss,
+        materials: JSON.parse(JSON.stringify(state.materials)),
+        reclaimedMaterials: JSON.parse(JSON.stringify(state.reclaimedMaterials)),
+        activeOverride: state.activeOverrideId ? { materialId: state.activeOverrideId } : null,
+        activeTab: state.activeTab === 'reclaim' ? 'regeneration' : 'production',
+        notes: notes
+      };
+
+      historyItems.unshift(newItem);
+      saveStorageHistory(historyItems);
+
+      if (notesInput) notesInput.value = '';
+      toggleSaveHistoryForm();
+      renderHistoryItems();
+    }
+
+    function renderHistoryItems() {
+      const container = document.getElementById('history-items-container');
+      if (!container) return;
+      const search = (document.getElementById('hist-search-input')?.value || '').toLowerCase();
+      const items = getStorageHistory().filter(item => {
+        if (!search) return true;
+        return (item.title && item.title.toLowerCase().includes(search)) ||
+               (item.packagingName && item.packagingName.toLowerCase().includes(search)) ||
+               (item.notes && item.notes.toLowerCase().includes(search));
+      });
+
+      if (items.length === 0) {
+        container.innerHTML = '<div class="text-center py-12 text-slate-500 text-xs">저장된 최근 계산 기록이 없습니다.</div>';
+        return;
+      }
+
+      container.innerHTML = items.map(item => {
+        const d = new Date(item.savedAt);
+        const dateStr = (d.getMonth()+1) + '월 ' + d.getDate() + '일 ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+        return `
+          <div class="bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 rounded-xl p-3.5 space-y-2.5 transition">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <h4 class="text-xs font-bold text-white">${item.title}</h4>
+                <div class="text-[10px] text-slate-400 mt-0.5">
+                  ${dateStr} • ${item.packagingName} • SG ${item.specificGravity}
+                </div>
+              </div>
+              <button onclick="deleteHistoryItem('${item.id}')" class="p-1 text-slate-500 hover:text-rose-400 rounded">
+                <i class="fa-solid fa-trash text-xs"></i>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-[11px] bg-slate-900/70 p-2.5 rounded-lg border border-slate-700/60">
+              <div>
+                <span class="text-slate-400 block text-[10px]">목표 수량:</span>
+                <strong class="text-white font-mono font-bold">${Number(item.targetQuantityEa).toLocaleString()} ea</strong>
+              </div>
+              <div>
+                <span class="text-slate-400 block text-[10px]">Total Batch (총량):</span>
+                <strong class="text-emerald-400 font-mono font-bold">${fmt(item.totalBatchSizeKg, 2)} kg</strong>
+              </div>
+              <div>
+                <span class="text-slate-400 block text-[10px]">생산 Batch (신규):</span>
+                <strong class="text-white font-mono font-bold">${fmt(item.productionBatchSizeKg, 2)} kg</strong>
+              </div>
+              <div>
+                <span class="text-slate-400 block text-[10px]">수율 / 로스:</span>
+                <strong class="text-amber-300 font-mono">${(100 - item.totalLossPct).toFixed(1)}% (${item.totalLossPct}% 로스)</strong>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
+              ${item.regeneratedTotalKg > 0 ? '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">재생원료 ' + fmt(item.regeneratedTotalKg, 1) + 'kg 투입</span>' : ''}
+              ${item.isPigmentExcludedMode ? '<span class="px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-300 border border-pink-500/30">색소 제외 100%</span>' : ''}
+              ${item.notes ? '<span class="text-slate-400 italic truncate max-w-[200px]">"' + item.notes + '"</span>' : ''}
+            </div>
+
+            <div class="pt-1 flex justify-end">
+              <button onclick="loadHistoryItem('${item.id}')" class="w-full sm:w-auto px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white border border-indigo-500/40 transition flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-rotate-left"></i> 이 배합표 불러오기
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function deleteHistoryItem(id) {
+      const items = getStorageHistory().filter(i => i.id !== id);
+      saveStorageHistory(items);
+      renderHistoryItems();
+    }
+
+    function clearAllHistory() {
+      if (confirm('저장된 모든 최근 계산 기록을 삭제하시겠습니까?')) {
+        saveStorageHistory([]);
+        renderHistoryItems();
+      }
+    }
+
+    function loadHistoryItem(id) {
+      const item = getStorageHistory().find(i => i.id === id);
+      if (!item) return;
+
+      state.specificGravity = item.specificGravity;
+      state.packagingId = item.selectedPackagingId;
+      state.targetQuantityEa = item.targetQuantityEa;
+      state.isPigmentExcludedMode = !!item.isPigmentExcludedMode;
+      if (Array.isArray(item.materials)) state.materials = item.materials;
+      if (Array.isArray(item.reclaimedMaterials)) state.reclaimedMaterials = item.reclaimedMaterials;
+      state.activeOverrideId = item.activeOverride ? item.activeOverride.materialId : null;
+
+      document.getElementById('input-sg').value = state.specificGravity;
+      document.getElementById('select-packaging').value = state.packagingId;
+      document.getElementById('input-target-ea').value = state.targetQuantityEa;
+      document.getElementById('checkbox-pigment-exclude').checked = state.isPigmentExcludedMode;
+
+      if (item.activeTab === 'regeneration' || item.regeneratedTotalKg > 0) {
+        switchTab('reclaim');
+      } else {
+        switchTab('normal');
+      }
+
+      closeHistoryDrawer();
+      render();
+    }
+
+    function exportHistoryBackupJson() {
+      const items = getStorageHistory();
+      const str = JSON.stringify(items, null, 2);
+      const blob = new Blob([str], { type: 'application/json;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'BatchSheet_History_Backup.json';
+      a.click();
+    }
+
+    function handleImportCrossPcFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const text = e.target.result;
+          if (file.name.endsWith('.json') || text.trim().startsWith('[')) {
+            const parsed = JSON.parse(text);
+            if (Array.isArray(parsed)) {
+              saveStorageHistory(parsed);
+              renderHistoryItems();
+              alert('성공: 타 PC 백업 파일에서 ' + parsed.length + '건의 기록을 성공적으로 복원했습니다.');
+              return;
+            }
+          }
+
+          // CSV parsing fallback
+          const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+          const newMaterials = [];
+          let hIndex = 0;
+          for (let i = 0; i < Math.min(lines.length, 10); i++) {
+            if (lines[i].includes('원재료코드') || lines[i].includes('배합비')) {
+              hIndex = i;
+              break;
+            }
+          }
+
+          for (let i = hIndex + 1; i < lines.length; i++) {
+            const parts = lines[i].split(',').map(s => s.replace(/^"|"$/g, '').trim());
+            if (parts.length < 4) continue;
+            let code = parts[2] || parts[0];
+            let name = parts[3] || parts[1] || code;
+            let ratio = parseFloat(parts[5] || parts[2]) || 0;
+            let pkg = parts[4] || '25kg 지대';
+            let isPigment = parts[1] === '색소(안료)' || parts[1] === 'Y';
+            newMaterials.push({
+              id: 'rm_' + Date.now() + '_' + i,
+              code: code,
+              name: name,
+              category: 'filler',
+              isPigment: isPigment,
+              packageUnit: pkg,
+              bagWeightKg: 25,
+              baseRatioPct: ratio,
+              notes: 'CSV 가져옴'
+            });
+          }
+
+          if (newMaterials.length > 0) {
+            state.materials = newMaterials;
+            const historyItems = getStorageHistory();
+            const newItem = {
+              id: 'hist_' + Date.now(),
+              savedAt: new Date().toISOString(),
+              title: '[CSV 가져옴] ' + file.name.replace(/\.[^/.]+$/, ''),
+              specificGravity: state.specificGravity,
+              selectedPackagingId: state.packagingId,
+              packagingName: '가져온 배합',
+              targetQuantityEa: state.targetQuantityEa,
+              totalBatchSizeKg: 1000,
+              productionBatchSizeKg: 1000,
+              regeneratedTotalKg: 0,
+              unitNetWeightKg: 0.375,
+              totalLossPct: 6.0,
+              materials: newMaterials,
+              reclaimedMaterials: [],
+              activeTab: 'production',
+              notes: '타 PC CSV 파일에서 복원됨'
+            };
+            historyItems.unshift(newItem);
+            saveStorageHistory(historyItems);
+            renderHistoryItems();
+            render();
+            alert('성공: CSV에서 ' + newMaterials.length + '개 원재료를 읽어와 시뮬레이터에 적용했습니다.');
+          }
+        } catch (err) {
+          console.error(err);
+          alert('파일 파싱 중 오류가 발생했습니다: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // ======================================================================
+    // BOM 검색 / MES→ECOUNT 변환 / xlsx 동일양식 배치시트 인쇄
+    // ======================================================================
+
+    // --- Seed product DB with one real example (extracted from 업로드된 Batch_Sheet_O-200 xlsx) ---
+    // 실제 서비스에서는 MES BOM 업로드 또는 직접입력으로 제품이 계속 추가됩니다.
+    state.productDb = [
+      {
+        code: 'O-200',
+        name: 'O-200_녹색',
+        bomVersion: 'O-200 녹색 (Batchsheet B)',
+        isDefaultBom: true,
+        basisQty: 1,
+        category: '실란트',
+        meta: {
+          batchSizeKg: 1360.25,
+          vesselNo: '',
+          lotNo: '',
+          specialNotes: '',
+          designDept: 'TOPSEAL 연구소',
+          client: '공용',
+          changeReasonMix: 'MOS 감량, 5T 증량',
+          changeDateMix: '2025-05-07',
+          changeReasonProcess: '',
+          changeDateProcess: '',
+          safetyGearInfo: '',
+          packagingApplied: '200L 흑색 재활용드럼, PE비닐라이너, PE커버시트, PE마감시트'
+        },
+        steps: [
+          {
+            id: 's1', title: '1. 원료계량_투입', mixCond: null,
+            instructions: [
+              '1. 로드셀에 탱크를 올려 놓은 후 영점을 맞춘다.',
+              '2. Vessel에 원료 OH-Polymer 50000cP 계량 후 나머지 조색제와 5004(Extender oil)을 계량하여 기록한 후 탱크측면에 배치시트를 부착한다. 계량순서 : 폴리머-조색제-오일',
+              '3. 생산계획에 맞춰 해당 작업 믹서 대기장소에 Vessel을 위치시킨다.'
+            ],
+            materials: [
+              { code: '', name: 'OH Polymer 50,000CS', stdKg: 422, tolerancePct: 1.0, specQty: '', caution: '', inputMethod: '자동투입' },
+              { code: '', name: 'Extender Oil(5004)', stdKg: 122, tolerancePct: 1.0, specQty: '', caution: '', inputMethod: '자동투입' },
+              { code: '', name: 'SL-7560 녹색', stdKg: 43.5, tolerancePct: 1.0, specQty: '', caution: '', inputMethod: '직접투입' }
+            ]
+          },
+          {
+            id: 's2-1', title: '2-1. 원료투입',
+            mixCond: { leftRpm: '250±20', rightRpm: '200±20', scraperRpm: '15±3', vacuum: 'min 0.08', timeMin: 10, tempC: '-' },
+            instructions: [
+              '1. 믹서 작업자는 배치시트에 기재된 제품명 및 투입량을 확인한다',
+              '2. 탱크를 믹서에 장착한다.',
+              '3. V.O.S 자동투입기를 통해 배치시트에 기록 된 양을 투입 후 계량표를 출력하여 Batch Sheet에 부착한다.',
+              '4. 진공 교반을 실시하며, 10분동안 가동한다.'
+            ],
+            materials: [
+              { code: '', name: 'VOS', stdKg: 8.9, tolerancePct: 1.0, specQty: '', caution: '', inputMethod: '자동투입' }
+            ]
+          },
+          {
+            id: 's2-2', title: '2-2. 원료투입',
+            mixCond: { leftRpm: '250±20', rightRpm: '200±20', scraperRpm: '15±3', vacuum: 'min 0.08', timeMin: 5, tempC: '-' },
+            instructions: [
+              '1. M.O.S 자동투입기를 통해 배치시트에 기록 된 양을 투입 후 계량표를 출력하여 Batch Sheet에 부착한다.'
+            ],
+            materials: [
+              { code: '', name: 'MOS', stdKg: 61.1, tolerancePct: 1.0, specQty: '', caution: '', inputMethod: '자동투입' }
+            ]
+          },
+          {
+            id: 's2-3', title: '2-3. 원료투입',
+            mixCond: { leftRpm: '500±20', rightRpm: '450±20', scraperRpm: '20±3', vacuum: '-', timeMin: 5, tempC: '-' },
+            instructions: [
+              '1. 진공 해제 후 믹서작업자는 중2층으로 올라가 파우더 투입 해치를 연다.',
+              '2. 준비된 Fumed Silica 150을 투입구에 투입한다. 투입 완료된 지대는 별도 위치한 후 투입량을 다시한번 체크한다.',
+              '3. CM-5T 투입 호수를 파우더 투입 호수에 연결 후 CM-5T 자동투입장치를 통하여 투입을 실시한 후 계량표를 프린트 하여 부착한다.',
+              '4. 에어건을 사용하여 믹서 헤드 및 탱크벽면, 믹서 샤프트에 묻은 잔여 파우더 원료를 털어낸다.',
+              '5. 파우더 투입 해치를 닫고 1층으로 위치한다.',
+              '6. 믹서 투시창을 열고 에어건을 사용하여 믹서 헤드 및 탱크벽면, 믹서 샤프트에 묻은 잔여 파우더 원료를 털어낸 후 투시창을 단단히 잠근다.'
+            ],
+            materials: [
+              { code: '', name: 'Fumed Silica K-150', stdKg: 50, tolerancePct: 1.0, specQty: '10kg/bag', caution: '', inputMethod: '직접투입' },
+              { code: '', name: 'CM-5T', stdKg: 639, tolerancePct: 1.0, specQty: '지대투입시 25kg/bag', caution: '', inputMethod: '자동투입' }
+            ]
+          },
+          {
+            id: 's2-4', title: '2-4. 강교반',
+            mixCond: { leftRpm: '600±20', rightRpm: '500±20', scraperRpm: '20±3', vacuum: 'min 0.08', timeMin: 15, tempC: 'max 60' },
+            instructions: [
+              '1. 믹서 헤드를 열고 샤프트와, 인펠러, 스크래퍼에 붙어있는 생산품을 헤라로 긁어낸다.',
+              '2. 샤프트, 인펠러, 스크래퍼 사이에 잔존한 생산품을 헤라로 제거하여 털어낸다.',
+              '※ 해당 작업은 최종 제품의 외관에 중요한 영향을 끼치므로 정확히 수행한다.',
+              '※ 해당 작업은 신속성이 중요하니 2인 1조로 작업을 실시한다.',
+              '3. 믹서 헤드를 닫고 강교반을 실시한다.',
+              '4. 교반 되는 동안 공정 2-5에 투입될 원재료를 사전에 소분통에 소분하여 준비한 후 프린팅하여 Batch sheet에 부착한다.',
+              '5. 교반 완료 후 진공해제하여 믹서 헤드를 살짝 열고 스페튤러를 이용하여 샘플을 3~5g 채취한 후 외관 및 색상검사를 실시한다.',
+              '※ 외관 및 색상에 이상이 있을 경우 현장책임자에게 보고 후 같은 조건으로 5분간 재믹싱 하여 재검사를 실시한다.'
+            ],
+            materials: []
+          },
+          {
+            id: 's2-5', title: '2-5. 원료투입',
+            mixCond: { leftRpm: '250±20', rightRpm: '200±20', scraperRpm: '15±3', vacuum: 'min 0.08', timeMin: 15, tempC: 'max 60' },
+            instructions: [
+              '1. 진공 해제 후 믹서 헤드를 열고 사전에 준비된 원재료를 투입한다.',
+              '2. 믹서 헤드를 닫고 공정조건에 맞게 교반을 실시한다.'
+            ],
+            materials: [
+              { code: '', name: 'MOS', stdKg: 6.67, tolerancePct: 1.0, specQty: '', caution: '소량원료 계량주의', inputMethod: '소분 후 직접투입' },
+              { code: '', name: 'TL-1', stdKg: 0.41, tolerancePct: 1.0, specQty: '', caution: '소량원료 계량주의', inputMethod: '소분 후 직접투입' },
+              { code: '', name: 'LT-792', stdKg: 6.67, tolerancePct: 1.0, specQty: '', caution: '소량원료 계량주의', inputMethod: '소분 후 직접투입' }
+            ]
+          },
+          {
+            id: 's2-6', title: '2-6. 믹싱종료', mixCond: null,
+            instructions: [
+              '1. 진공 해제 후 믹서 헤드를 열고 샤프트, 인펠러, 스크래퍼 사이에 잔존한 생산품을 헤라로 제거하여 털어낸다.',
+              '2. 생산 완료된 Vessel을 믹서에서 적출하여 상부에 비닐을 밀착시킨 후 프레스 여과공정으로 이동시킨다.',
+              '※ 해당 작업은 신속성이 중요하니 2인 1조로 작업을 실시한다.(제품경화우려)'
+            ],
+            materials: []
+          },
+          {
+            id: 's3', title: '3. 여과/취출', mixCond: null,
+            instructions: [
+              '1. Vessel을 프레스에 창착하고, 드럼 소분계량을 준비한다.',
+              '2. 취출용기(드럼)에 비닐 라이너를 삽입하고 내부를 질소로 퍼지 시킨다.',
+              '3. 여과기에 80메쉬를 설치하고 높이를 조정한 후 Vessel 토출부에 장착한다.',
+              '4. 반제품 취출시 프레스 작업자가 Spatula로 견본을 채취한다.(3~5g) 검사용지에 도포하여 색상,외관,이물질 등을 검사 한다.',
+              '5. 취출작업 중에는 계속 질소를 충전하여, 습기에 의한 오염을 차단한다.',
+              '6. 드럼 취출 중간에 검사용 샘플을 준비된 용기에 받아 밀봉한다.',
+              '7. 취출이 종료되면 드럼상부 제품을 알루미늄 호일로 밀착시킨 후 드럼비닐을 케이블 타이로 단단히 체결한다.',
+              '8. 드럼상부 공간에 질소를 충전시킨 후, 비닐을 덮고 뚜껑을 단단히 볼트를 조여 결합한다.',
+              '※ 외관불량으로 인해 토출이 원할하지 않을시 현장 책임자에게 보고한 후 조치를 받는다.'
+            ],
+            materials: []
+          }
+        ],
+        finish: { appearance: 'O', packLot: '', filterMeshNo: '', filterMeshChangeCount: '' }
+      }
+    ];
+    state.selectedProductKey = null;
+    state.bomMultiplier = 1;
+
+    // 제품코드가 비어있는 MES 원본(생산품목코드 공란, BOM버전만 있는 경우)이 흔하므로
+    // 코드+BOM버전 조합을 고유키로 사용 (동일 제품의 여러 배합 버전을 구분)
+    function productKey(p) { return (p.code || '') + '||' + (p.bomVersion || ''); }
+
+    // --- 다중검색: 공백/언더스코어/하이픈 무시, 토큰 AND 매칭 ---
+    function normalizeSearchText(s) {
+      return (s || '').toString().toLowerCase().replace(/[_\-\s]+/g, ' ').trim();
+    }
+    function tokenizeQuery(q) {
+      return normalizeSearchText(q).split(' ').filter(Boolean);
+    }
+    function searchProducts(query) {
+      const tokens = tokenizeQuery(query);
+      if (tokens.length === 0) return state.productDb;
+      return state.productDb.filter(p => {
+        const hay = normalizeSearchText(p.code + ' ' + p.name + ' ' + (p.bomVersion || ''));
+        return tokens.every(t => hay.includes(t));
+      });
+    }
+
+    function renderBomSearchResults() {
+      const q = document.getElementById('bom-search-input')?.value || '';
+      const results = searchProducts(q);
+      const box = document.getElementById('bom-search-results');
+      if (!box) return;
+      if (results.length === 0) {
+        box.innerHTML = '<div class="text-xs text-slate-500 col-span-2 py-3 text-center">일치하는 제품이 없습니다. MES BOM을 업로드하거나 새 제품을 등록해 보세요.</div>';
+        return;
+      }
+      box.innerHTML = results.map(p => {
+        const key = productKey(p);
+        return `
+        <button onclick="selectProduct('${key.replace(/'/g, "\\'")}')" class="text-left p-3 rounded-lg border transition ${state.selectedProductKey === key ? 'bg-amber-500/20 border-amber-500/60' : 'bg-slate-900/70 border-slate-700 hover:border-amber-500/50'}">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-bold text-sm text-white">${p.name}</span>
+            <span class="flex items-center gap-1 shrink-0">
+              ${p.isDefaultBom ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">기본</span>' : ''}
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">${p.code || '-'}</span>
+            </span>
+          </div>
+          ${p.bomVersion ? `<div class="text-[11px] text-amber-300/80 mt-0.5">${p.bomVersion}</div>` : ''}
+          <div class="text-[11px] text-slate-400 mt-1">${p.category || ''} • 소모품목 ${p.steps.reduce((a,s)=>a+s.materials.length,0)}종 • 기준생산수량 ${fmt(p.basisQty || 1, 0)}</div>
+        </button>
+      `; }).join('');
+    }
+
+    function selectProduct(key) {
+      state.selectedProductKey = key;
+      state.bomMultiplier = 1;
+      const p = getSelectedProduct();
+      document.getElementById('bom-target-qty-input').value = p ? (p.basisQty || 1) : 1;
+      renderBomSearchResults();
+      renderBomDetail();
+      document.getElementById('bom-detail-panel').classList.remove('hidden');
+      document.getElementById('btn-download-ecount').disabled = false;
+      const bm=document.getElementById('bm-selected-product'); if(bm) bm.textContent=p ? `${p.name} · ${p.code||'-'}` : 'BOM 검색 탭에서 제품을 선택하세요.';
+      document.getElementById('btn-download-ecount').className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500 transition flex items-center gap-1.5';
+    }
+
+    function getSelectedProduct() {
+      return state.productDb.find(p => productKey(p) === state.selectedProductKey) || null;
+    }
+
+    // 목표 생산수량을 입력하면 기준생산수량(basisQty) 대비 배수를 자동 계산
+    function onBomTargetQtyChange(val) {
+      const p = getSelectedProduct();
+      if (!p) return;
+      const targetQty = parseFloat(val);
+      const basis = p.basisQty || 1;
+      state.bomMultiplier = (isNaN(targetQty) || targetQty < 0 || basis <= 0) ? 1 : (targetQty / basis);
+      renderBomDetail();
+    }
+
+    function onMetaFieldChange(field, val) {
+      const p = getSelectedProduct();
+      if (!p) return;
+      p.meta[field] = val;
+      if (field !== 'specialNotes') renderBomDetail();
+    }
+
+    function bomMaterialBounds(mat) {
+      const applied = mat.stdKg * state.bomMultiplier;
+      const tol = (mat.tolerancePct != null ? mat.tolerancePct : 1.0) / 100;
+      return { applied, lower: applied * (1 - tol), upper: applied * (1 + tol) };
+    }
+
+    function renderBomDetail() {
+      const p = getSelectedProduct();
+      if (!p) return;
+      document.getElementById('bom-detail-name').innerText = p.name;
+      document.getElementById('bom-detail-code').innerText = p.code || '-';
+      document.getElementById('bom-detail-basisqty').innerText = fmt(p.basisQty || 1, 0);
+      document.getElementById('bom-multiplier-display').innerText = 'x' + fmt(state.bomMultiplier, 4);
+      const computedSum = p.steps.reduce((a, s) => a + s.materials.reduce((a2, m) => a2 + bomMaterialBounds(m).applied, 0), 0);
+      const displayBatchSize = (p.meta.batchSizeKg && p.meta.batchSizeKg > 0) ? (p.meta.batchSizeKg * state.bomMultiplier) : computedSum;
+      document.getElementById('bom-detail-batchsize').innerText = fmt(displayBatchSize, 2);
+      document.getElementById('meta-vesselNo').value = p.meta.vesselNo || '';
+      document.getElementById('meta-lotNo').value = p.meta.lotNo || '';
+      document.getElementById('meta-designDept').value = p.meta.designDept || '';
+      document.getElementById('meta-client').value = p.meta.client || '';
+      document.getElementById('meta-specialNotes').value = p.meta.specialNotes || '';
+      document.getElementById('meta-changeReasonMix').value = p.meta.changeReasonMix || '';
+      document.getElementById('meta-changeDateMix').value = p.meta.changeDateMix || '';
+
+      const container = document.getElementById('bom-steps-container');
+      container.innerHTML = p.steps.map((step, si) => {
+        if (step.materials.length === 0) return `
+          <div class="border border-slate-700 rounded-lg overflow-hidden">
+            <div class="bg-slate-900/80 px-3 py-2 text-xs font-bold text-amber-300">${step.title} <span class="text-slate-500 font-normal">(계량 원료 없음 · 공정 지시만 존재)</span></div>
+          </div>`;
+        const rows = step.materials.map((mat, mi) => {
+          const b = bomMaterialBounds(mat);
+          return `
+          <tr class="border-t border-slate-700/60">
+            <td class="px-2 py-1.5 text-center text-slate-400">${mi + 1}</td>
+            <td class="px-2 py-1.5"><input value="${mat.code}" onchange="onBomMatFieldChange('${step.id}',${mi},'code',this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-slate-200"></td>
+            <td class="px-2 py-1.5"><input value="${mat.name}" onchange="onBomMatFieldChange('${step.id}',${mi},'name',this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white font-semibold"></td>
+            <td class="px-2 py-1.5"><input type="number" step="0.01" value="${mat.stdKg}" onchange="onBomMatFieldChange('${step.id}',${mi},'stdKg',parseFloat(this.value)||0)" class="w-24 bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-emerald-300 font-mono text-right"></td>
+            <td class="px-2 py-1.5 text-right font-mono text-indigo-300">${fmt(b.applied, 2)}</td>
+            <td class="px-2 py-1.5 text-right font-mono text-slate-400">${fmt(b.lower, 3)}</td>
+            <td class="px-2 py-1.5 text-right font-mono text-slate-400">${fmt(b.upper, 3)}</td>
+            <td class="px-2 py-1.5"><input type="number" step="0.1" value="${mat.tolerancePct != null ? mat.tolerancePct : 1.0}" onchange="onBomMatFieldChange('${step.id}',${mi},'tolerancePct',parseFloat(this.value)||1)" class="w-14 bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white font-mono text-right">%</td>
+            <td class="px-2 py-1.5"><input value="${mat.inputMethod || ''}" onchange="onBomMatFieldChange('${step.id}',${mi},'inputMethod',this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-slate-300"></td>
+          </tr>`;
+        }).join('');
+        return `
+          <div class="border border-slate-700 rounded-lg overflow-hidden">
+            <div class="bg-slate-900/80 px-3 py-2 text-xs font-bold text-amber-300 flex items-center justify-between">
+              <span>${step.title}</span>
+              ${step.mixCond ? `<span class="text-[10px] font-normal text-slate-400">좌${step.mixCond.leftRpm} 우${step.mixCond.rightRpm} 스크래퍼${step.mixCond.scraperRpm} 진공${step.mixCond.vacuum} ${step.mixCond.timeMin}min ${step.mixCond.tempC}</span>` : ''}
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="bg-slate-900/50 text-slate-500 text-[10px] uppercase">
+                    <th class="px-2 py-1.5">순번</th><th class="px-2 py-1.5">CODE</th><th class="px-2 py-1.5">원재료명</th>
+                    <th class="px-2 py-1.5 text-right">표준투입량(kg)</th><th class="px-2 py-1.5 text-right">적용(x배수)</th>
+                    <th class="px-2 py-1.5 text-right">계량하한</th><th class="px-2 py-1.5 text-right">계량상한</th>
+                    <th class="px-2 py-1.5">공차%</th><th class="px-2 py-1.5">투입방법</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function onBomMatFieldChange(stepId, matIdx, field, value) {
+      const p = getSelectedProduct();
+      if (!p) return;
+      const step = p.steps.find(s => s.id === stepId);
+      if (!step) return;
+      step.materials[matIdx][field] = value;
+      renderBomDetail();
+    }
+
+    // --- MES 업로드 → ECOUNT 변환 (중복 원재료 합산) ---
+    function parseCsvSmart(text) {
+      const delim = text.includes('\t') && !text.includes(',') ? '\t' : ',';
+      const lines = text.split(/\r\n|\n/).filter(l => l.trim().length > 0);
+      return lines.map(l => l.split(delim).map(c => c.trim().replace(/^"|"$/g, '')));
+    }
+
+    function findCol(headers, candidates) {
+      const norm = headers.map(h => (h || '').toLowerCase().replace(/\s/g, ''));
+      for (const c of candidates) {
+        const idx = norm.findIndex(h => h.includes(c));
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    }
+
+    // MES(ERP) "품목코드_BOM연결" 표준 컬럼 형식:
+    // 생산품목코드, 생산품목명, 생산품BOM버전, 기본BOM여부, 생산수량,
+    // 소모품목코드, 소모품목명, 소모품BOM버전, 소모수량, 소모추가수량, 위치, 적요
+    function handleMesBomUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const rows = parseCsvSmart(e.target.result);
+          if (rows.length < 2) throw new Error('데이터 행이 없습니다.');
+          const headers = rows[0];
+          const cProdCode  = findCol(headers, ['생산품목코드', '제품코드', '품목코드']);
+          const cProdName  = findCol(headers, ['생산품목명', '제품명', '품목명']);
+          const cBomVer    = findCol(headers, ['생산품bom버전', 'bom버전']);
+          const cIsDefault = findCol(headers, ['기본bom여부']);
+          const cProdQty   = findCol(headers, ['생산수량']);
+          const cMatCode   = findCol(headers, ['소모품목코드', '원료코드', '자재코드']);
+          const cMatName   = findCol(headers, ['소모품목명', '원료명', '자재명']);
+          const cMatBomVer = findCol(headers, ['소모품bom버전']);
+          const cMatQty    = findCol(headers, ['소모수량', '표준투입량', '투입량', '사용수량']);
+          const cMatExtra  = findCol(headers, ['소모추가수량']);
+          const cLocation  = findCol(headers, ['위치']);
+          const cNote      = findCol(headers, ['적요']);
+
+          if (cBomVer === -1 && cProdCode === -1) throw new Error('생산품목코드 또는 생산품BOM버전 컬럼을 찾을 수 없습니다.');
+          if (cMatName === -1) throw new Error('소모품목명 컬럼을 찾을 수 없습니다.');
+          if (cMatQty === -1) throw new Error('소모수량 컬럼을 찾을 수 없습니다.');
+
+          const byProduct = {};
+          for (let i = 1; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r || r.every(c => !c)) continue;
+            const prodCodeRaw = cProdCode !== -1 ? (r[cProdCode] || '').trim() : '';
+            const prodNameRaw = cProdName !== -1 ? (r[cProdName] || '').trim() : '';
+            const bomVer = cBomVer !== -1 ? (r[cBomVer] || '').trim() : '';
+            const isDefault = cIsDefault !== -1 ? (r[cIsDefault] || '').trim().toUpperCase() === 'Y' : false;
+            const prodQty = cProdQty !== -1 ? (parseFloat((r[cProdQty] || '0').replace(/,/g, '')) || 0) : 0;
+            const code = prodCodeRaw || bomVer;
+            const name = prodNameRaw || bomVer;
+            if (!code && !bomVer) continue;
+            const key = prodCodeRaw + '||' + bomVer;
+            if (!byProduct[key]) {
+              byProduct[key] = {
+                code: code, name: name, bomVersion: bomVer, isDefaultBom: isDefault,
+                category: 'MES 업로드', basisQty: prodQty || 1,
+                meta: { batchSizeKg: 0, vesselNo: '', lotNo: '', specialNotes: '', designDept: '', client: '',
+                  changeReasonMix: '', changeDateMix: '', changeReasonProcess: '', changeDateProcess: '', safetyGearInfo: '', packagingApplied: '' },
+                steps: [], finish: { appearance: 'O', packLot: '', filterMeshNo: '', filterMeshChangeCount: '' }
+              };
+            }
+            let step = byProduct[key].steps[0];
+            if (!step) {
+              step = { id: 'mes_flat', title: '전체 소모품목 (MES BOM)', mixCond: null, instructions: [], materials: [] };
+              byProduct[key].steps.push(step);
+            }
+            const baseQty = parseFloat((r[cMatQty] || '0').replace(/,/g, '')) || 0;
+            const extraQty = cMatExtra !== -1 ? (parseFloat((r[cMatExtra] || '0').replace(/,/g, '')) || 0) : 0;
+            step.materials.push({
+              code: cMatCode !== -1 ? (r[cMatCode] || '') : '',
+              name: r[cMatName] || '',
+              stdKg: baseQty + extraQty,
+              tolerancePct: 1.0,
+              specQty: '',
+              caution: cNote !== -1 ? (r[cNote] || '') : '',
+              location: cLocation !== -1 ? (r[cLocation] || '') : '',
+              matBomVersion: cMatBomVer !== -1 ? (r[cMatBomVer] || '') : '',
+              inputMethod: ''
+            });
+          }
+
+          const newProducts = Object.values(byProduct);
+          newProducts.forEach(np => {
+            const existingIdx = state.productDb.findIndex(p => productKey(p) === productKey(np));
+            if (existingIdx !== -1) state.productDb[existingIdx] = np;
+            else state.productDb.push(np);
+          });
+
+          document.getElementById('mes-upload-status').innerText = `업로드 완료: BOM버전 ${newProducts.length}건 (생산품목코드+생산품BOM버전 기준), 총 ${newProducts.reduce((a,p)=>a+p.steps.reduce((a2,s)=>a2+s.materials.length,0),0)}개 소모품목 등록/갱신됨.`;
+          renderBomSearchResults();
+        } catch (err) {
+          alert('MES BOM 업로드 파싱 오류: ' + err.message);
+        }
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
+
+    function downloadMesBomTemplateCsv() {
+      const headers = '생산품목코드,생산품목명,생산품BOM버전,기본BOM여부,생산수량,소모품목코드,소모품목명,소모품BOM버전,소모수량,소모추가수량,위치,적요\n';
+      const sample =
+        ',,O200NW+안료 K150,Y,100000,R_POLY5_009,5만TANK,,32032,,,\n' +
+        ',,O200NW+안료 K150,Y,100000,R_PLAST_021,5004TANK(Extender)(YK-SS1)(D-130),,9251,,,\n' +
+        ',,O200NW+안료 K150,Y,100000,R_HADN3_003,VOS(PC7500),,677,,,\n';
+      downloadTextFile('MES_BOM_업로드양식.csv', '\uFEFF' + headers + sample);
+    }
+
+    function downloadTextFile(filename, content) {
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // ECOUNT는 동일 BOM 내 소모품목 중복 등록 불가 → 소모품목코드(없으면 소모품목명) 기준으로 합산하여 1행으로 병합
+    function buildEcountRows(product) {
+      const merged = {};
+      const order = [];
+      product.steps.forEach(step => {
+        step.materials.forEach(mat => {
+          const key = (mat.code && mat.code.trim()) ? ('C:' + mat.code.trim()) : ('N:' + mat.name.trim());
+          const appliedQty = mat.stdKg * state.bomMultiplier;
+          if (!merged[key]) {
+            merged[key] = { code: mat.code || '', name: mat.name, qty: 0 };
+            order.push(key);
+          }
+          merged[key].qty += appliedQty;
+        });
+      });
+      return order.map(k => merged[k]);
+    }
+
+    function downloadEcountBomCsv() {
+      const p = getSelectedProduct();
+      if (!p) return;
+      const rows = buildEcountRows(p);
+      const totalRows = p.steps.reduce((a, s) => a + s.materials.length, 0);
+      const dupCount = totalRows - rows.length;
+      const targetQty = (p.basisQty || 1) * state.bomMultiplier;
+      let csv = '생산품목코드,생산품목명,생산품BOM버전,기본BOM여부,생산수량,소모품목코드,소모품목명,소모수량\n';
+      rows.forEach(r => {
+        csv += `${p.code},${p.name},${p.bomVersion || ''},${p.isDefaultBom ? 'Y' : 'N'},${fmt(targetQty, 4)},${r.code},${r.name},${fmt(r.qty, 4)}\n`;
+      });
+      const safeName = (p.code || p.bomVersion || 'product').toString().replace(/[^\w\-가-힣]/g, '_');
+      downloadTextFile(`ECOUNT_BOM_${safeName}.csv`, '\uFEFF' + csv);
+      if (dupCount > 0) {
+        alert(`ECOUNT 버전으로 변환하며 중복 소모품목 ${dupCount}건을 자동 합산하여 병합했습니다.`);
+      } else {
+        alert('중복 소모품목이 없어 그대로 변환되었습니다.');
+      }
+    }
+
+    // --- 배치시트 인쇄 (업로드된 xlsx 양식과 동일한 구조로 재현) ---
+    function esc(s) { return (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g, '<br>'); }
+
+    function buildPrintSheetHtml(p) {
+      const m = p.meta;
+      const batchSize = m.batchSizeKg * state.bomMultiplier;
+      const approveBoxes = ['작성', '검토', '검토', '승인'].map(t => `<td class="bs-approve-box">${t}<br><br></td>`).join('');
+
+      const stepsHtml = p.steps.map(step => {
+        const matTable = step.materials.length === 0 ? '' : `
+          <table>
+            <tr class="bs-mat-head">
+              <td style="width:5%">순번</td><td style="width:9%">CODE</td><td style="width:20%">원재료명</td>
+              <td style="width:9%">표준투입량(kg)</td><td style="width:9%">계량하한(kg)</td><td style="width:9%">계량상한(kg)</td>
+              <td style="width:10%">로트번호</td><td style="width:10%">규격 X 수량</td><td style="width:9%">주의사항</td><td style="width:10%">투입방법</td>
+            </tr>
+            ${step.materials.map((mat, i) => {
+              const b = bomMaterialBounds(mat);
+              return `<tr>
+                <td style="text-align:center">${i+1}</td><td>${esc(mat.code)}</td><td>${esc(mat.name)}</td>
+                <td style="text-align:right">${fmt(b.applied,2)}</td><td style="text-align:right">${fmt(b.lower,3)}</td><td style="text-align:right">${fmt(b.upper,3)}</td>
+                <td>&nbsp;</td><td>${esc(mat.specQty)}</td><td>${esc(mat.caution)}</td><td>${esc(mat.inputMethod)}</td>
+              </tr>`;
+            }).join('')}
+          </table>`;
+
+        const mixCondTable = step.mixCond ? `
+          <table style="width:160px;float:right;margin-left:6px">
+            <tr><td>좌 RPM</td><td>${esc(step.mixCond.leftRpm)}</td></tr>
+            <tr><td>우 RPM</td><td>${esc(step.mixCond.rightRpm)}</td></tr>
+            <tr><td>스크래퍼 RPM</td><td>${esc(step.mixCond.scraperRpm)}</td></tr>
+            <tr><td>진공(MPa)</td><td>${esc(step.mixCond.vacuum)}</td></tr>
+            <tr><td>시간(min)</td><td>${esc(step.mixCond.timeMin)}</td></tr>
+            <tr><td>온도(℃)</td><td>${esc(step.mixCond.tempC)}</td></tr>
+          </table>` : '';
+
+        return `
+          <table style="margin-top:6px">
+            <tr class="bs-step-title"><td colspan="2">${esc(step.title)}</td><td colspan="6">공정 지시사항</td>${step.mixCond ? '<td colspan="2">공정조건</td>' : '<td colspan="2"></td>'}</tr>
+            <tr>
+              <td style="width:8%">시작시간</td><td rowspan="3" style="width:6%">&nbsp;</td>
+              <td colspan="8" rowspan="3">
+                ${mixCondTable}
+                <div>${step.instructions.map(esc).join('<br>')}</div>
+              </td>
+            </tr>
+            <tr><td>종료시간</td></tr>
+            <tr><td>공정 특이사항</td></tr>
+          </table>
+          ${matTable}`;
+      }).join('');
+
+      return `
+        <table>
+          <tr>
+            <td colspan="9" class="bs-title">COMPOUNDING BATCH SHEET<br><span style="font-size:13px;font-weight:600">${esc(p.name)}</span></td>
+            ${approveBoxes}
+          </tr>
+        </table>
+        <table style="margin-top:4px">
+          <tr><td style="width:12%">특이사항</td><td colspan="4">${esc(m.specialNotes)}</td><td style="width:10%">Vessel No.</td><td colspan="2">${esc(m.vesselNo)}</td><td style="width:10%">안전보호구정보</td><td colspan="2">${esc(m.packagingApplied)}</td></tr>
+          <tr><td>Lot No.</td><td colspan="4">${esc(m.lotNo)}</td><td colspan="6"></td></tr>
+          <tr><td>Batch Size(kg)</td><td colspan="2" style="text-align:right;font-weight:700">${fmt(batchSize,2)}</td><td>설계부서</td><td>${esc(m.designDept)}</td><td>거래선</td><td colspan="4">${esc(m.client)}</td></tr>
+          <tr><td>배합변경사유</td><td colspan="4">${esc(m.changeReasonMix)}</td><td>배합변경일</td><td colspan="4">${esc(m.changeDateMix)}</td></tr>
+          <tr><td>공정변경사유</td><td colspan="4">${esc(m.changeReasonProcess)}</td><td>공정변경일</td><td colspan="4">${esc(m.changeDateProcess)}</td></tr>
+        </table>
+        ${stepsHtml}
+        <table style="margin-top:6px">
+          <tr class="bs-mat-head"><td colspan="2">제품명</td><td colspan="6">드럼당 취출량(kg) [1~6]</td><td>외관</td><td>총 취출량(kg) / 수율(%)</td></tr>
+          <tr>
+            <td colspan="2">${esc(p.name)}</td>
+            <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+            <td style="text-align:center">${esc(p.finish.appearance || 'O')} / X</td>
+            <td>&nbsp;</td>
+          </tr>
+          <tr><td colspan="2">포장 로트(라벨 상 표기 로트)</td><td colspan="6">${esc(p.finish.packLot)}</td><td>여과망# / 교체횟수</td><td>${esc(p.finish.filterMeshNo)} / ${esc(p.finish.filterMeshChangeCount)}</td></tr>
+        </table>
+        <p style="font-size:9px;color:#555;margin-top:4px">※ 이 인쇄물은 원본 배치시트(xlsx) 양식의 항목/구조를 동일하게 재현한 출력물입니다. 원본 전자결재 서식이 별도로 있다면 해당 컬럼 라벨을 알려주시면 그대로 맞춰드립니다.</p>
+      `;
+    }
+
+    function printBomBatchSheet() {
+      const p = getSelectedProduct();
+      if (!p) { alert('먼저 BOM을 검색하여 제품을 선택해주세요.'); return; }
+      document.getElementById('print-sheet').innerHTML = buildPrintSheetHtml(p);
+      document.body.classList.add('printing-bom-sheet');
+      window.print();
+    }
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing-bom-sheet');
+    });
+
+    // ===== Batch Sheet Master / Template Engine =====
+    const BATCHMASTER_KEY = 'topseal_batch_sheet_master_v1';
+    const BATCHMAPPING_KEY = 'topseal_batch_sheet_mapping_v1';
+    let batchTemplates = JSON.parse(localStorage.getItem(BATCHMASTER_KEY) || '[]');
+    let batchMappings = JSON.parse(localStorage.getItem(BATCHMAPPING_KEY) || '{}');
+
+    function saveBatchStores() {
+      localStorage.setItem(BATCHMASTER_KEY, JSON.stringify(batchTemplates));
+      localStorage.setItem(BATCHMAPPING_KEY, JSON.stringify(batchMappings));
+    }
+
+    function renderBatchMaster() {
+      const box = document.getElementById('batchmaster-list');
+      if (!box) return;
+      if (!batchTemplates.length) {
+        box.innerHTML = '<div class="p-4 rounded-lg border border-dashed border-slate-700 text-center text-xs text-slate-500">등록된 Base Sheet가 없습니다. 첫 번째 Base로 O-200 오크 Excel을 추가하세요.</div>';
+        return;
+      }
+      box.innerHTML = batchTemplates.map((t,i) => `
+        <div class="p-3 rounded-lg border border-slate-700 bg-slate-900/70 flex items-center justify-between gap-3">
+          <div><div class="text-sm font-bold text-white">${esc(t.name)}</div><div class="text-[11px] text-slate-400">${esc(t.baseBomId || '-')} · ${t.sheetNames.length}개 Worksheet · ${esc(t.fileName)}</div></div>
+          <div class="flex gap-1.5"><button onclick="cloneBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-slate-700 text-[11px] text-white">복제</button><button onclick="deleteBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-rose-900/60 text-[11px] text-rose-200">삭제</button></div>
+        </div>`).join('');
+    }
+
+    async function handleBaseExcelUpload(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const buffer = await file.arrayBuffer();
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buffer);
+        const sheetNames = wb.worksheets.map(ws => ws.name);
+        const baseBomId = prompt('이 Base Sheet가 연결될 baseBomId를 입력하세요.', 'B_O200B_046');
+        if (baseBomId === null) return;
+        const name = prompt('Base Sheet 이름을 입력하세요.', file.name.replace(/\.xlsx$/i,'')) || file.name;
+        const id = 'BS_' + Date.now();
+        batchTemplates.push({id,name,baseBomId:baseBomId.trim(),fileName:file.name,sheetNames,buffer:Array.from(new Uint8Array(buffer))});
+        saveBatchStores(); renderBatchMaster(); renderBatchMappingProducts();
+        document.getElementById('bm-status').textContent = `Base Sheet 등록 완료: ${name}`;
+      } catch (e) { alert('Excel 파일을 읽지 못했습니다: ' + e.message); }
+      event.target.value='';
+    }
+
+    function cloneBatchTemplate(i) {
+      const t = batchTemplates[i]; if (!t) return;
+      const name = prompt('복제할 Base Sheet 이름', t.name + ' 복제본'); if (!name) return;
+      const id='BS_'+Date.now();
+      batchTemplates.push({...t,id,name,buffer:[...t.buffer],sheetNames:[...t.sheetNames]}); saveBatchStores(); renderBatchMaster();
+    }
+    function deleteBatchTemplate(i) {
+      const t=batchTemplates[i]; if(!t) return;
+      const refs=Object.values(batchMappings).filter(m=>m.baseSheetId===t.id).length;
+      if(refs && !confirm(`현재 ${refs}개 제품이 사용 중입니다. 그래도 삭제하시겠습니까?`)) return;
+      if(!refs && !confirm('이 Base Sheet를 삭제하시겠습니까?')) return;
+      batchTemplates.splice(i,1); saveBatchStores(); renderBatchMaster(); renderBatchMappingProducts();
+    }
+
+    function renderBatchMappingProducts() {
+      const sel=document.getElementById('bm-product-select'); if(!sel) return;
+      const q=(document.getElementById('bm-product-search')?.value||'').trim().toLowerCase();
+      const arr=(state.productDb||[]).filter(p=>!q || `${p.name||''} ${p.code||''}`.toLowerCase().includes(q));
+      sel.innerHTML='<option value="">제품을 선택하세요</option>'+arr.slice(0,200).map(p=>`<option value="${esc(productKey(p))}">${esc(p.name)} · ${esc(p.code||'-')}</option>`).join('');
+      const current=state.selectedProductKey; if(current && arr.some(p=>productKey(p)===current)) sel.value=current;
+    }
+
+    function loadBatchMappingEditor() {
+      const key=document.getElementById('bm-product-select').value; const editor=document.getElementById('batchmapping-editor');
+      if(!key){editor.classList.add('hidden');return;} editor.classList.remove('hidden');
+      const p=state.productDb.find(x=>productKey(x)===key); const m=batchMappings[key]||{};
+      const baseCandidates=batchTemplates.filter(t=>!p?.baseBomId || t.baseBomId===p.baseBomId);
+      const baseSel=document.getElementById('bm-base-select'); baseSel.innerHTML=baseCandidates.map(t=>`<option value="${t.id}">${esc(t.name)} · ${esc(t.baseBomId||'')}</option>`).join('');
+      if(m.baseSheetId && baseCandidates.some(t=>t.id===m.baseSheetId)) baseSel.value=m.baseSheetId;
+      const t=baseCandidates.find(x=>x.id===baseSel.value); const sheets=t?.sheetNames||[];
+      document.getElementById('bm-sheet-select').innerHTML=sheets.map(n=>`<option>${esc(n)}</option>`).join('');
+      if(m.sheetName && sheets.includes(m.sheetName)) document.getElementById('bm-sheet-select').value=m.sheetName;
+      document.getElementById('bm-pigment-code-cell').value=m.pigmentCodeCell||'B17';
+      document.getElementById('bm-pigment-name-cell').value=m.pigmentNameCell||'C17';
+      document.getElementById('bm-pigment-qty-cell').value=m.pigmentQtyCell||'D17';
+    }
+    document.getElementById('bm-base-select')?.addEventListener('change',()=>{
+      const t=batchTemplates.find(x=>x.id===document.getElementById('bm-base-select').value); const ss=document.getElementById('bm-sheet-select');
+      ss.innerHTML=(t?.sheetNames||[]).map(n=>`<option>${esc(n)}</option>`).join('');
+    });
+    function saveBatchMapping(){
+      const key=document.getElementById('bm-product-select').value; if(!key) return;
+      batchMappings[key]={baseSheetId:document.getElementById('bm-base-select').value,sheetName:document.getElementById('bm-sheet-select').value,pigmentCodeCell:document.getElementById('bm-pigment-code-cell').value.trim().toUpperCase(),pigmentNameCell:document.getElementById('bm-pigment-name-cell').value.trim().toUpperCase(),pigmentQtyCell:document.getElementById('bm-pigment-qty-cell').value.trim().toUpperCase()};
+      saveBatchStores(); document.getElementById('bm-status').textContent='제품별 Batch Sheet 매핑을 저장했습니다.';
+    }
+    function clearBatchMapping(){const key=document.getElementById('bm-product-select').value;if(!key)return;delete batchMappings[key];saveBatchStores();loadBatchMappingEditor();}
+
+    function normalizeMaterialKey(v){return String(v||'').toLowerCase().replace(/[\s\-_().,/]/g,'').replace(/㎏|kg/g,'');}
+    function getProductPigment(p){
+      const mats=[]; (p?.steps||[]).forEach(s=>(s.materials||[]).forEach(m=>{if(m.isPigment || /색소|안료|pigment/i.test(m.name||'')) mats.push(m);}));
+      return mats.sort((a,b)=>(b.stdKg||0)-(a.stdKg||0))[0]||null;
+    }
+    function findMaterialRow(ws, mat){
+      const code=normalizeMaterialKey(mat.code), name=normalizeMaterialKey(mat.name);
+      for(let r=1;r<=ws.rowCount;r++){const rc=normalizeMaterialKey(ws.getCell(r,2).value), rn=normalizeMaterialKey(ws.getCell(r,3).value);if(code&&rc&&code===rc)return r;if(name&&rn&&name===rn)return r;}
+      return null;
+    }
+    function writeIfEditable(cell, value){ if(cell && cell.address) cell.value=value; }
+
+    async function generateBatchSheetFromTemplate(){
+      const p=getSelectedProduct(); if(!p){alert('먼저 BOM 검색 탭에서 제품을 선택하세요.');return;}
+      const qty=parseFloat(document.getElementById('bm-production-qty').value || document.getElementById('bom-target-qty-input')?.value);
+      if(!Number.isFinite(qty)||qty<=0){alert('생산수량을 입력하세요.');return;}
+      const mapping=batchMappings[productKey(p)]||{};
+      let template=batchTemplates.find(t=>t.id===mapping.baseSheetId);
+      if(!template) template=batchTemplates.find(t=>t.baseBomId===p.baseBomId);
+      if(!template){alert(`제품 ${p.name}에 연결된 Base Sheet가 없습니다. Batch Sheet Master에서 Excel을 등록하세요.`);return;}
+      const status=document.getElementById('bm-status'); status.textContent='Base Excel을 복제하고 BOM 데이터를 반영하는 중...';
+      try{
+        const wb=new ExcelJS.Workbook(); await wb.xlsx.load(new Uint8Array(template.buffer));
+        const ws=wb.getWorksheet(mapping.sheetName || template.sheetNames[0]); if(!ws) throw new Error('Worksheet를 찾을 수 없습니다.');
+        // 제품명: 실제 Base의 D2 구조를 유지하며 값만 변경
+        if(ws.getCell('D2')) ws.getCell('D2').value=p.name || p.title || '';
+        // Batch size: 템플릿 수식은 보존하되, BOM 재료값을 매칭되는 행에 반영
+        const basis=p.basisQty||1, multiplier=qty/basis;
+        (p.steps||[]).forEach(step=>(step.materials||[]).forEach(mat=>{
+          const row=findMaterialRow(ws,mat); if(!row) return;
+          const c=ws.getCell(row,4); if(typeof c.value==='number' || c.value==null) c.value=Number((mat.stdKg*multiplier).toFixed(3));
+          if(mat.code && !ws.getCell(row,2).value) ws.getCell(row,2).value=mat.code;
+        }));
+        const pigment=getProductPigment(p);
+        if(pigment){
+          const pc=mapping.pigmentCodeCell||'B17', pn=mapping.pigmentNameCell||'C17', pq=mapping.pigmentQtyCell||'D17';
+          ws.getCell(pc).value=pigment.code||''; ws.getCell(pn).value=pigment.name||''; ws.getCell(pq).value=Number((pigment.stdKg*multiplier).toFixed(3));
+        }
+        const out='Batch Sheet_'+String(p.name||'제품').replace(/[\\/:*?"<>|]/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+        const data=await wb.xlsx.writeBuffer(); const blob=new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=out;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+        status.textContent=`생성 완료: ${out} · 생산수량 ${qty.toFixed(3)} kg · Base 양식 유지`;
+      }catch(e){status.textContent='생성 실패: '+e.message;console.error(e);alert('Batch Sheet 생성 실패: '+e.message);}
+    }
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      switchTab('normal');
+      updateHistoryBadge();
+      renderBomSearchResults();
+      renderBatchMaster();
+      renderBatchMappingProducts();
+      if (state.selectedProductKey) { document.getElementById('bm-selected-product').textContent = getSelectedProduct()?.name || 'BOM 검색 탭에서 제품을 선택하세요.'; }
+    });
+  </script>
+</body>
+</html>
