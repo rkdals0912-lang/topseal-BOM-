@@ -33,6 +33,17 @@
     #print-sheet .bs-title { font-size: 18px; font-weight: 800; text-align: center; }
     #print-sheet .bs-approve-box { border: 1px solid #000; width: 60px; height: 44px; text-align: center; font-size: 10px; }
     #print-sheet .bs-step-title { background: #eef0f3; font-weight: 700; }
+    /* Batch Sheet Template 셀 매핑 미리보기 (Excel 유사 격자) */
+    .mapping-preview-table { border-collapse: collapse; }
+    .mapping-preview-table th, .mapping-preview-table td { border: 1px solid #334155; padding: 3px 6px; white-space: nowrap; min-width: 46px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; color: #cbd5e1; }
+    .mapping-preview-table th.col-head, .mapping-preview-table th.row-head { background: #1e293b; color: #94a3b8; font-weight: 700; text-align: center; position: sticky; z-index: 2; }
+    .mapping-preview-table th.col-head { top: 0; }
+    .mapping-preview-table th.row-head { left: 0; }
+    .mapping-preview-table th.sticky-corner { position: sticky; top: 0; left: 0; background: #0f172a; z-index: 3; }
+    .mapping-preview-table td.mp-cell { cursor: pointer; background: #0f172a; position: relative; }
+    .mapping-preview-table td.mp-cell:hover { background: #1e2b45; outline: 1px solid #6366f1; }
+    .mapping-preview-table td.mp-assigned { background: #422006; outline: 2px solid #f59e0b; }
+    .mapping-preview-table .mp-badge { font-size: 9px; font-weight: 700; color: #fbbf24; white-space: nowrap; }
     #print-sheet .bs-mat-head { background: #dfe3e8; font-weight: 700; text-align: center; }
     @page { size: A4; margin: 10mm; }
   </style>
@@ -93,7 +104,10 @@
     <!-- Top Tab Navigation -->
     <div class="flex items-center justify-between border-b border-slate-800 pb-2">
       <div class="flex items-center gap-2">
-        <button id="tab-normal-btn" onclick="switchTab('normal')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30">
+        <button id="tab-bom-btn" onclick="switchTab('bom')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30">
+          <i class="fa-solid fa-magnifying-glass text-amber-400"></i> BOM 검색 / 배치시트
+        </button>
+        <button id="tab-normal-btn" onclick="switchTab('normal')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
           <i class="fa-solid fa-industry"></i> [생산배합 탭] 정규 원재료
         </button>
         <button id="tab-reclaim-btn" onclick="switchTab('reclaim')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
@@ -102,9 +116,6 @@
         </button>
         <button id="tab-master-btn" onclick="switchTab('master')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
           <i class="fa-solid fa-database text-cyan-400"></i> 원재료 표준화 & 엑셀 마스터
-        </button>
-        <button id="tab-bom-btn" onclick="switchTab('bom')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
-          <i class="fa-solid fa-magnifying-glass text-amber-400"></i> BOM 검색 / 배치시트 인쇄
         </button>
         <button id="tab-batchmaster-btn" onclick="switchTab('batchmaster')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
           <i class="fa-solid fa-file-excel text-emerald-400"></i> Batch Sheet Master
@@ -469,11 +480,11 @@
       <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-4">
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2"><i class="fa-solid fa-file-excel text-emerald-400"></i> Base Sheet Master</h2>
-            <p class="text-[11px] text-slate-400 mt-1">실제 Excel Base 양식을 그대로 보존하고, 제품/BOM별 매핑값만 입력합니다.</p>
+            <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2"><i class="fa-solid fa-file-excel text-emerald-400"></i> 표준 Batch Sheet Template 목록</h2>
+            <p class="text-[11px] text-slate-400 mt-1">업로드한 원본 Excel의 서식(병합/글꼴/테두리/인쇄영역 등)은 그대로 보존되고, 매핑된 셀의 값만 자동으로 채워집니다.</p>
           </div>
           <label class="cursor-pointer px-3 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">
-            <i class="fa-solid fa-upload mr-1"></i> Base Excel 추가
+            <i class="fa-solid fa-upload mr-1"></i> 표준 Batch Sheet 업로드 (.xlsx)
             <input id="batchmaster-file" type="file" accept=".xlsx" class="hidden" onchange="handleBaseExcelUpload(event)">
           </label>
         </div>
@@ -483,21 +494,22 @@
       <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-4">
         <div class="flex items-center justify-between">
           <div>
-            <h2 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-link text-cyan-400 mr-1"></i> 제품 ↔ Base Sheet / Pigment Mapping</h2>
-            <p class="text-[11px] text-slate-400 mt-1">안료명/코드/투입량 셀을 제품별로 지정할 수 있습니다. 예: B17=코드, C17=안료명, D17=투입량</p>
+            <h2 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-link text-cyan-400 mr-1"></i> 품목 ↔ Template 연결</h2>
+            <p class="text-[11px] text-slate-400 mt-1">품목(BOM)별로 사용할 표준 Batch Sheet Template과 Worksheet만 지정합니다. 셀 매핑 자체는 Template에서 한 번만 설정하면 같은 Template을 쓰는 모든 품목에 재사용됩니다.</p>
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div><label class="text-[11px] text-slate-400">제품 검색</label><input id="bm-product-search" oninput="renderBatchMappingProducts()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="제품명 / 제품코드"></div>
-          <div><label class="text-[11px] text-slate-400">선택 제품</label><select id="bm-product-select" onchange="loadBatchMappingEditor()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
+          <div><label class="text-[11px] text-slate-400">품목 검색</label><input id="bm-product-search" oninput="renderBatchMappingProducts()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="제품명 / 제품코드"></div>
+          <div><label class="text-[11px] text-slate-400">선택 품목</label><select id="bm-product-select" onchange="loadBatchMappingEditor()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
         </div>
         <div id="batchmapping-editor" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-slate-700 pt-4">
-          <div><label class="text-[11px] text-slate-400">Base Sheet</label><select id="bm-base-select" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
+          <div><label class="text-[11px] text-slate-400">Template</label><select id="bm-base-select" onchange="onBmBaseSelectChange()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
           <div><label class="text-[11px] text-slate-400">Worksheet</label><select id="bm-sheet-select" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
-          <div><label class="text-[11px] text-slate-400">Pigment Code Cell</label><input id="bm-pigment-code-cell" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="B17"></div>
-          <div><label class="text-[11px] text-slate-400">Pigment Name Cell</label><input id="bm-pigment-name-cell" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="C17"></div>
-          <div><label class="text-[11px] text-slate-400">Pigment Qty Cell</label><input id="bm-pigment-qty-cell" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="D17"></div>
-          <div class="flex items-end gap-2"><button onclick="saveBatchMapping()" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">매핑 저장</button><button onclick="clearBatchMapping()" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold">초기화</button></div>
+          <div class="md:col-span-2 flex items-center gap-2 flex-wrap">
+            <button onclick="saveBatchMapping()" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">연결 저장</button>
+            <button onclick="clearBatchMapping()" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold">연결 초기화</button>
+            <button onclick="openMappingEditorForCurrentSelection()" class="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold"><i class="fa-solid fa-arrow-pointer mr-1"></i> 이 Template 셀 매핑 열기</button>
+          </div>
         </div>
       </div>
 
@@ -505,10 +517,50 @@
         <h2 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-gears text-amber-400 mr-1"></i> Batch Sheet 생성</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div><label class="text-[11px] text-slate-400">현재 선택 BOM</label><div id="bm-selected-product" class="mt-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white">BOM 검색 탭에서 제품을 선택하세요.</div></div>
-          <div><label class="text-[11px] text-slate-400">생산수량(kg)</label><input id="bm-production-qty" type="number" step="0.001" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="예: 1000"></div>
-          <div class="flex items-end"><button onclick="generateBatchSheetFromTemplate()" class="w-full px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"><i class="fa-solid fa-download mr-1"></i> Base 양식으로 Batch Sheet 생성</button></div>
+          <div><label class="text-[11px] text-slate-400">Batch Size (생산수량, kg)</label><input id="bm-production-qty" type="number" step="0.001" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="예: 1000"></div>
+          <div class="flex items-end gap-2">
+            <button onclick="previewBatchSheetFromTemplate()" class="w-1/2 px-4 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold"><i class="fa-solid fa-eye mr-1"></i> 미리보기</button>
+            <button onclick="generateBatchSheetFromTemplate()" class="w-1/2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"><i class="fa-solid fa-download mr-1"></i> Excel 다운로드</button>
+          </div>
         </div>
+        <div id="bm-preview-box" class="hidden p-3 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-300 space-y-1"></div>
         <div id="bm-status" class="text-[11px] text-slate-400"></div>
+      </div>
+    </div>
+
+    <!-- Batch Sheet Template Cell-Mapping Modal (click-to-map, no manual cell address typing) -->
+    <div id="mapping-modal" class="fixed inset-0 z-50 hidden bg-black/70 backdrop-blur-sm items-center justify-center p-3">
+      <div class="bg-slate-900 border border-slate-700 w-full max-w-6xl h-[92vh] rounded-xl shadow-2xl flex flex-col overflow-hidden">
+        <div class="p-3.5 border-b border-slate-700 flex items-center justify-between gap-3 flex-wrap bg-slate-900/95">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-table-cells text-amber-400"></i> Batch Sheet 셀 매핑 <span id="mapping-modal-title" class="text-amber-300"></span></h3>
+            <p class="text-[11px] text-slate-400 mt-0.5">왼쪽에서 매핑 항목을 클릭한 뒤, 오른쪽 미리보기에서 해당 값이 들어갈 셀을 클릭하세요. 셀 주소를 직접 입력할 필요가 없습니다.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-[11px] text-slate-400">Worksheet</label>
+            <select id="mapping-sheet-select" onchange="onMappingSheetChange()" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white"></select>
+            <button onclick="closeMappingEditor()" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"><i class="fa-solid fa-xmark text-lg"></i></button>
+          </div>
+        </div>
+
+        <div class="flex-1 flex overflow-hidden">
+          <!-- Mapping items panel -->
+          <div class="w-64 shrink-0 border-r border-slate-700 overflow-y-auto p-3 space-y-1.5" id="mapping-items-panel"></div>
+
+          <!-- Excel preview panel -->
+          <div class="flex-1 overflow-auto p-3 bg-slate-950/40" id="mapping-preview-panel">
+            <div class="text-xs text-slate-500">Template을 불러오는 중...</div>
+          </div>
+        </div>
+
+        <div class="p-3 border-t border-slate-700 flex items-center justify-between gap-3 bg-slate-900/95">
+          <div class="text-[11px] text-slate-400">선택한 셀: <strong id="mapping-selected-cell" class="text-amber-300 font-mono">-</strong> · 현재 매핑 중인 항목: <strong id="mapping-armed-item" class="text-cyan-300">-</strong></div>
+          <div class="flex items-center gap-2">
+            <span id="mapping-validation-msg" class="text-[11px] text-rose-400"></span>
+            <button onclick="resetCurrentMapping()" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold">매핑 초기화</button>
+            <button onclick="saveMappingFromModal()" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"><i class="fa-solid fa-floppy-disk mr-1"></i> 매핑 저장</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2424,6 +2476,8 @@
     const BATCHMAPPING_KEY = 'topseal_batch_sheet_mapping_v1';
     let batchTemplates = JSON.parse(localStorage.getItem(BATCHMASTER_KEY) || '[]');
     let batchMappings = JSON.parse(localStorage.getItem(BATCHMAPPING_KEY) || '{}');
+    // 하위호환: 예전 버전에서 template.mapping 필드가 없던 데이터 보정
+    batchTemplates.forEach(t => { if (!t.mapping) t.mapping = {}; });
 
     function saveBatchStores() {
       localStorage.setItem(BATCHMASTER_KEY, JSON.stringify(batchTemplates));
@@ -2434,14 +2488,26 @@
       const box = document.getElementById('batchmaster-list');
       if (!box) return;
       if (!batchTemplates.length) {
-        box.innerHTML = '<div class="p-4 rounded-lg border border-dashed border-slate-700 text-center text-xs text-slate-500">등록된 Base Sheet가 없습니다. 첫 번째 Base로 O-200 오크 Excel을 추가하세요.</div>';
+        box.innerHTML = '<div class="p-4 rounded-lg border border-dashed border-slate-700 text-center text-xs text-slate-500">등록된 표준 Batch Sheet Template이 없습니다. 현장에서 사용하는 표준 Batch Sheet Excel(.xlsx)을 업로드하세요.</div>';
         return;
       }
-      box.innerHTML = batchTemplates.map((t,i) => `
-        <div class="p-3 rounded-lg border border-slate-700 bg-slate-900/70 flex items-center justify-between gap-3">
-          <div><div class="text-sm font-bold text-white">${esc(t.name)}</div><div class="text-[11px] text-slate-400">${esc(t.baseBomId || '-')} · ${t.sheetNames.length}개 Worksheet · ${esc(t.fileName)}</div></div>
-          <div class="flex gap-1.5"><button onclick="cloneBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-slate-700 text-[11px] text-white">복제</button><button onclick="deleteBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-rose-900/60 text-[11px] text-rose-200">삭제</button></div>
-        </div>`).join('');
+      box.innerHTML = batchTemplates.map((t,i) => {
+        const mappedCount = Object.keys(t.mapping||{}).length;
+        return `
+        <div class="p-3 rounded-lg border border-slate-700 bg-slate-900/70 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div class="text-sm font-bold text-white">${esc(t.name)}</div>
+            <div class="text-[11px] text-slate-400">${esc(t.baseBomId || '-')} · ${t.sheetNames.length}개 Worksheet · ${esc(t.fileName)} ·
+              <span class="${mappedCount ? 'text-emerald-400' : 'text-amber-400'}">셀 매핑 완료 ${mappedCount}/${t.sheetNames.length} 시트</span>
+            </div>
+          </div>
+          <div class="flex gap-1.5">
+            <button onclick="openMappingEditor('${t.id}')" class="px-2.5 py-1.5 rounded bg-amber-700/70 hover:bg-amber-600 text-[11px] text-white font-bold"><i class="fa-solid fa-arrow-pointer mr-1"></i>셀 매핑</button>
+            <button onclick="cloneBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-slate-700 text-[11px] text-white">복제</button>
+            <button onclick="deleteBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-rose-900/60 text-[11px] text-rose-200">삭제</button>
+          </div>
+        </div>`;
+      }).join('');
     }
 
     async function handleBaseExcelUpload(event) {
@@ -2452,28 +2518,28 @@
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buffer);
         const sheetNames = wb.worksheets.map(ws => ws.name);
-        const baseBomId = prompt('이 Base Sheet가 연결될 baseBomId를 입력하세요.', 'B_O200B_046');
+        const baseBomId = prompt('이 표준 Batch Sheet가 연결될 baseBomId(선택, 비워도 됨)를 입력하세요.', '');
         if (baseBomId === null) return;
-        const name = prompt('Base Sheet 이름을 입력하세요.', file.name.replace(/\.xlsx$/i,'')) || file.name;
+        const name = prompt('표준 Batch Sheet 이름을 입력하세요.', file.name.replace(/\.xlsx$/i,'')) || file.name;
         const id = 'BS_' + Date.now();
-        batchTemplates.push({id,name,baseBomId:baseBomId.trim(),fileName:file.name,sheetNames,buffer:Array.from(new Uint8Array(buffer))});
+        batchTemplates.push({id,name,baseBomId:baseBomId.trim(),fileName:file.name,sheetNames,buffer:Array.from(new Uint8Array(buffer)),mapping:{}});
         saveBatchStores(); renderBatchMaster(); renderBatchMappingProducts();
-        document.getElementById('bm-status').textContent = `Base Sheet 등록 완료: ${name}`;
-      } catch (e) { alert('Excel 파일을 읽지 못했습니다: ' + e.message); }
+        document.getElementById('bm-status').textContent = `표준 Batch Sheet 등록 완료: ${name}. 이어서 [셀 매핑]으로 값이 들어갈 위치를 지정하세요.`;
+      } catch (e) { alert('Excel 파일을 읽지 못했습니다(손상된 Excel Template일 수 있습니다): ' + e.message); }
       event.target.value='';
     }
 
     function cloneBatchTemplate(i) {
       const t = batchTemplates[i]; if (!t) return;
-      const name = prompt('복제할 Base Sheet 이름', t.name + ' 복제본'); if (!name) return;
+      const name = prompt('복제할 Template 이름', t.name + ' 복제본'); if (!name) return;
       const id='BS_'+Date.now();
-      batchTemplates.push({...t,id,name,buffer:[...t.buffer],sheetNames:[...t.sheetNames]}); saveBatchStores(); renderBatchMaster();
+      batchTemplates.push({...t,id,name,buffer:[...t.buffer],sheetNames:[...t.sheetNames],mapping:JSON.parse(JSON.stringify(t.mapping||{}))}); saveBatchStores(); renderBatchMaster();
     }
     function deleteBatchTemplate(i) {
       const t=batchTemplates[i]; if(!t) return;
       const refs=Object.values(batchMappings).filter(m=>m.baseSheetId===t.id).length;
-      if(refs && !confirm(`현재 ${refs}개 제품이 사용 중입니다. 그래도 삭제하시겠습니까?`)) return;
-      if(!refs && !confirm('이 Base Sheet를 삭제하시겠습니까?')) return;
+      if(refs && !confirm(`현재 ${refs}개 품목이 사용 중입니다. 그래도 삭제하시겠습니까?`)) return;
+      if(!refs && !confirm('이 Template을 삭제하시겠습니까?')) return;
       batchTemplates.splice(i,1); saveBatchStores(); renderBatchMaster(); renderBatchMappingProducts();
     }
 
@@ -2481,7 +2547,7 @@
       const sel=document.getElementById('bm-product-select'); if(!sel) return;
       const q=(document.getElementById('bm-product-search')?.value||'').trim().toLowerCase();
       const arr=(state.productDb||[]).filter(p=>!q || `${p.name||''} ${p.code||''}`.toLowerCase().includes(q));
-      sel.innerHTML='<option value="">제품을 선택하세요</option>'+arr.slice(0,200).map(p=>`<option value="${esc(productKey(p))}">${esc(p.name)} · ${esc(p.code||'-')}</option>`).join('');
+      sel.innerHTML='<option value="">품목을 선택하세요</option>'+arr.slice(0,200).map(p=>`<option value="${esc(productKey(p))}">${esc(p.name)} · ${esc(p.code||'-')}</option>`).join('');
       const current=state.selectedProductKey; if(current && arr.some(p=>productKey(p)===current)) sel.value=current;
     }
 
@@ -2492,71 +2558,280 @@
       const baseCandidates=batchTemplates.filter(t=>!p?.baseBomId || t.baseBomId===p.baseBomId);
       const baseSel=document.getElementById('bm-base-select'); baseSel.innerHTML=baseCandidates.map(t=>`<option value="${t.id}">${esc(t.name)} · ${esc(t.baseBomId||'')}</option>`).join('');
       if(m.baseSheetId && baseCandidates.some(t=>t.id===m.baseSheetId)) baseSel.value=m.baseSheetId;
-      const t=baseCandidates.find(x=>x.id===baseSel.value); const sheets=t?.sheetNames||[];
-      document.getElementById('bm-sheet-select').innerHTML=sheets.map(n=>`<option>${esc(n)}</option>`).join('');
-      if(m.sheetName && sheets.includes(m.sheetName)) document.getElementById('bm-sheet-select').value=m.sheetName;
-      document.getElementById('bm-pigment-code-cell').value=m.pigmentCodeCell||'B17';
-      document.getElementById('bm-pigment-name-cell').value=m.pigmentNameCell||'C17';
-      document.getElementById('bm-pigment-qty-cell').value=m.pigmentQtyCell||'D17';
+      onBmBaseSelectChange();
+      if(m.sheetName){ const ss=document.getElementById('bm-sheet-select'); if([...ss.options].some(o=>o.value===m.sheetName)) ss.value=m.sheetName; }
     }
-    document.getElementById('bm-base-select')?.addEventListener('change',()=>{
+    function onBmBaseSelectChange(){
       const t=batchTemplates.find(x=>x.id===document.getElementById('bm-base-select').value); const ss=document.getElementById('bm-sheet-select');
-      ss.innerHTML=(t?.sheetNames||[]).map(n=>`<option>${esc(n)}</option>`).join('');
-    });
+      ss.innerHTML=(t?.sheetNames||[]).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    }
     function saveBatchMapping(){
       const key=document.getElementById('bm-product-select').value; if(!key) return;
-      batchMappings[key]={baseSheetId:document.getElementById('bm-base-select').value,sheetName:document.getElementById('bm-sheet-select').value,pigmentCodeCell:document.getElementById('bm-pigment-code-cell').value.trim().toUpperCase(),pigmentNameCell:document.getElementById('bm-pigment-name-cell').value.trim().toUpperCase(),pigmentQtyCell:document.getElementById('bm-pigment-qty-cell').value.trim().toUpperCase()};
-      saveBatchStores(); document.getElementById('bm-status').textContent='제품별 Batch Sheet 매핑을 저장했습니다.';
+      batchMappings[key]={baseSheetId:document.getElementById('bm-base-select').value,sheetName:document.getElementById('bm-sheet-select').value};
+      saveBatchStores(); document.getElementById('bm-status').textContent='품목 ↔ Template 연결을 저장했습니다.';
     }
     function clearBatchMapping(){const key=document.getElementById('bm-product-select').value;if(!key)return;delete batchMappings[key];saveBatchStores();loadBatchMappingEditor();}
-
-    function normalizeMaterialKey(v){return String(v||'').toLowerCase().replace(/[\s\-_().,/]/g,'').replace(/㎏|kg/g,'');}
-    function getProductPigment(p){
-      const mats=[]; (p?.steps||[]).forEach(s=>(s.materials||[]).forEach(m=>{if(m.isPigment || /색소|안료|pigment/i.test(m.name||'')) mats.push(m);}));
-      return mats.sort((a,b)=>(b.stdKg||0)-(a.stdKg||0))[0]||null;
+    function openMappingEditorForCurrentSelection(){
+      const tid=document.getElementById('bm-base-select').value; const sheetName=document.getElementById('bm-sheet-select').value;
+      if(!tid){alert('먼저 연결할 Template을 선택하세요.');return;}
+      openMappingEditor(tid, sheetName);
     }
-    function findMaterialRow(ws, mat){
-      const code=normalizeMaterialKey(mat.code), name=normalizeMaterialKey(mat.name);
-      for(let r=1;r<=ws.rowCount;r++){const rc=normalizeMaterialKey(ws.getCell(r,2).value), rn=normalizeMaterialKey(ws.getCell(r,3).value);if(code&&rc&&code===rc)return r;if(name&&rn&&name===rn)return r;}
-      return null;
-    }
-    function writeIfEditable(cell, value){ if(cell && cell.address) cell.value=value; }
 
-    async function generateBatchSheetFromTemplate(){
-      const p=getSelectedProduct(); if(!p){alert('먼저 BOM 검색 탭에서 제품을 선택하세요.');return;}
-      const qty=parseFloat(document.getElementById('bm-production-qty').value || document.getElementById('bom-target-qty-input')?.value);
-      if(!Number.isFinite(qty)||qty<=0){alert('생산수량을 입력하세요.');return;}
+    // ----- 셀 매핑 유틸 (Excel 주소 <-> 행/열 변환) -----
+    function colIdxToLetter(n){let s='';while(n>0){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s||'A';}
+    function colLetterToIdx(letters){let n=0;for(const ch of String(letters||'').toUpperCase()){if(ch<'A'||ch>'Z')continue;n=n*26+(ch.charCodeAt(0)-64);}return n||1;}
+    function parseCellAddr(addr){const m=/^([A-Za-z]+)(\d+)$/.exec(String(addr||'').trim());if(!m)return null;return{col:colLetterToIdx(m[1]),row:parseInt(m[2],10)};}
+    function computeMergeInfo(ws){
+      const merges=(ws.model && ws.model.merges)||[]; const mainSpan={}; const skip=new Set();
+      merges.forEach(rangeStr=>{
+        const parts=String(rangeStr).split(':'); if(parts.length!==2) return;
+        const pa=parseCellAddr(parts[0]), pb=parseCellAddr(parts[1]); if(!pa||!pb) return;
+        const r1=Math.min(pa.row,pb.row), r2=Math.max(pa.row,pb.row), c1=Math.min(pa.col,pb.col), c2=Math.max(pa.col,pb.col);
+        mainSpan[`${r1}_${c1}`]={rowspan:r2-r1+1,colspan:c2-c1+1};
+        for(let r=r1;r<=r2;r++) for(let c=c1;c<=c2;c++){ if(r===r1&&c===c1) continue; skip.add(`${r}_${c}`); }
+      });
+      return {mainSpan, skip};
+    }
+    function cellDisplayValue(cell){
+      let v=cell.value;
+      if(v && typeof v==='object'){
+        if(Array.isArray(v.richText)) v=v.richText.map(t=>t.text).join('');
+        else if(v.result!=null) v=v.result;
+        else if(v.text!=null) v=v.text;
+        else if(v.formula!=null) v='='+v.formula;
+        else v='';
+      }
+      return v==null? '' : String(v);
+    }
+
+    // ----- Mapping 항목 정의 (수기 셀 주소 입력 없이, Preview 클릭으로만 지정) -----
+    const MAPPING_FIELDS = [
+      {key:'itemCode', label:'품목코드', kind:'cell'},
+      {key:'itemName', label:'품목명', kind:'cell'},
+      {key:'batchSize', label:'Batch Size', kind:'cell'},
+      {key:'materialStartRow', label:'원재료 시작 행', kind:'row'},
+      {key:'materialCodeCol', label:'원재료코드 열', kind:'col'},
+      {key:'materialNameCol', label:'원재료명 열', kind:'col'},
+      {key:'materialQtyCol', label:'표준투입량 열', kind:'col'},
+      {key:'materialSgCol', label:'비중값 열', kind:'col', optional:true}
+    ];
+    const REQUIRED_MAPPING_KEYS = ['materialStartRow','materialCodeCol','materialNameCol','materialQtyCol'];
+
+    let mappingState = { templateId:null, sheetName:null, workbook:null, draft:{}, armedField:null };
+
+    function openMappingEditor(templateId, sheetName){
+      const t=batchTemplates.find(x=>x.id===templateId); if(!t){alert('Template을 찾을 수 없습니다.');return;}
+      document.getElementById('mapping-modal-title').textContent='· '+t.name;
+      const sheetSel=document.getElementById('mapping-sheet-select');
+      sheetSel.innerHTML=t.sheetNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+      const initialSheet = (sheetName && t.sheetNames.includes(sheetName)) ? sheetName : t.sheetNames[0];
+      sheetSel.value=initialSheet;
+      mappingState.templateId=templateId;
+      mappingState.sheetName=initialSheet;
+      mappingState.draft={ ...((t.mapping||{})[initialSheet] || {}) };
+      mappingState.armedField=MAPPING_FIELDS.find(f=>!mappingState.draft[f.key])?.key || MAPPING_FIELDS[0].key;
+      document.getElementById('mapping-selected-cell').textContent='-';
+      document.getElementById('mapping-validation-msg').textContent='';
+      const modal=document.getElementById('mapping-modal'); modal.classList.remove('hidden'); modal.classList.add('flex');
+      const panel=document.getElementById('mapping-preview-panel'); panel.innerHTML='<div class="text-xs text-slate-500">Template Excel을 불러오는 중...</div>';
+      const wb=new ExcelJS.Workbook();
+      wb.xlsx.load(new Uint8Array(t.buffer)).then(()=>{
+        mappingState.workbook=wb;
+        renderMappingItemsPanel();
+        renderMappingPreview();
+      }).catch(e=>{ panel.innerHTML=`<div class="text-xs text-rose-400">Template을 불러오지 못했습니다: ${esc(e.message)}</div>`; });
+    }
+    function onMappingSheetChange(){
+      const t=batchTemplates.find(x=>x.id===mappingState.templateId); if(!t) return;
+      const sheetName=document.getElementById('mapping-sheet-select').value;
+      mappingState.sheetName=sheetName;
+      mappingState.draft={ ...((t.mapping||{})[sheetName] || {}) };
+      mappingState.armedField=MAPPING_FIELDS.find(f=>!mappingState.draft[f.key])?.key || MAPPING_FIELDS[0].key;
+      document.getElementById('mapping-selected-cell').textContent='-';
+      document.getElementById('mapping-validation-msg').textContent='';
+      renderMappingItemsPanel();
+      renderMappingPreview();
+    }
+    function closeMappingEditor(){
+      const modal=document.getElementById('mapping-modal'); modal.classList.add('hidden'); modal.classList.remove('flex');
+      mappingState={ templateId:null, sheetName:null, workbook:null, draft:{}, armedField:null };
+    }
+    function armMappingField(key){ mappingState.armedField=key; renderMappingItemsPanel(); }
+
+    function renderMappingItemsPanel(){
+      const panel=document.getElementById('mapping-items-panel'); if(!panel) return;
+      panel.innerHTML = MAPPING_FIELDS.map(f=>{
+        const val=mappingState.draft[f.key]; const armed=mappingState.armedField===f.key;
+        return `<button onclick="armMappingField('${f.key}')" class="w-full text-left px-3 py-2.5 rounded-lg border text-xs transition ${armed?'border-amber-400 bg-amber-500/10':'border-slate-700 bg-slate-800/60 hover:border-slate-500'}">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-bold ${armed?'text-amber-200':'text-slate-300'}">${esc(f.label)}${f.optional?' <span class="text-slate-500 font-normal">(선택)</span>':''}</span>
+            ${val!=null && val!=='' ? `<span class="font-mono text-emerald-400">${esc(String(val))}</span>` : '<span class="text-slate-500">미지정</span>'}
+          </div>
+        </button>`;
+      }).join('');
+      const armedField=MAPPING_FIELDS.find(f=>f.key===mappingState.armedField);
+      document.getElementById('mapping-armed-item').textContent = armedField ? armedField.label : '-';
+    }
+
+    function mappingAssignedLabelFor(addr,r,c){
+      const labels=[];
+      MAPPING_FIELDS.forEach(f=>{
+        const v=mappingState.draft[f.key]; if(v==null||v==='') return;
+        if(f.kind==='cell' && v===addr) labels.push(f.label);
+        else if(f.kind==='row' && Number(v)===r && c===1) labels.push(f.label);
+        else if(f.kind==='col'){
+          const startRow=mappingState.draft.materialStartRow;
+          if(startRow && r===Number(startRow) && String(v).toUpperCase()===colIdxToLetter(c)) labels.push(f.label);
+        }
+      });
+      return labels.join(', ');
+    }
+
+    function renderMappingPreview(){
+      const panel=document.getElementById('mapping-preview-panel'); if(!panel) return;
+      if(!mappingState.workbook){ panel.innerHTML='<div class="text-xs text-slate-500">Template을 불러오는 중...</div>'; return; }
+      const ws=mappingState.workbook.getWorksheet(mappingState.sheetName);
+      if(!ws){ panel.innerHTML='<div class="text-xs text-rose-400">지원하지 않는 Excel 구조이거나 Worksheet를 찾을 수 없습니다.</div>'; return; }
+      const {mainSpan, skip}=computeMergeInfo(ws);
+      const maxRow=Math.min(ws.rowCount||1, 250);
+      const maxCol=Math.min(ws.columnCount||1, 30);
+      let html='<table class="mapping-preview-table"><tr><th class="sticky-corner"></th>';
+      for(let c=1;c<=maxCol;c++) html+=`<th class="col-head">${colIdxToLetter(c)}</th>`;
+      html+='</tr>';
+      for(let r=1;r<=maxRow;r++){
+        html+=`<tr><th class="row-head">${r}</th>`;
+        for(let c=1;c<=maxCol;c++){
+          const key=`${r}_${c}`; if(skip.has(key)) continue;
+          const span=mainSpan[key]; const rowspan=span?span.rowspan:1, colspan=span?span.colspan:1;
+          const cell=ws.getCell(r,c); const display=cellDisplayValue(cell).slice(0,40);
+          const addr=colIdxToLetter(c)+r; const label=mappingAssignedLabelFor(addr,r,c);
+          html+=`<td class="mp-cell${label?' mp-assigned':''}" rowspan="${rowspan}" colspan="${colspan}" onclick="onMappingCellClick(${r},${c})" title="${esc(addr)}">${esc(display)}${label?`<div class="mp-badge">${esc(label)}</div>`:''}</td>`;
+        }
+        html+='</tr>';
+      }
+      html+='</table>';
+      panel.innerHTML=html;
+    }
+
+    function onMappingCellClick(r,c){
+      const key=mappingState.armedField;
+      const addr=colIdxToLetter(c)+r;
+      if(!key){ document.getElementById('mapping-selected-cell').textContent=addr+' (왼쪽에서 매핑 항목을 먼저 선택하세요)'; return; }
+      const field=MAPPING_FIELDS.find(f=>f.key===key); if(!field) return;
+      if(field.kind==='row') mappingState.draft[key]=r;
+      else if(field.kind==='col') mappingState.draft[key]=colIdxToLetter(c);
+      else mappingState.draft[key]=addr;
+      document.getElementById('mapping-selected-cell').textContent=addr;
+      document.getElementById('mapping-validation-msg').textContent='';
+      const idx=MAPPING_FIELDS.findIndex(f=>f.key===key);
+      const next=MAPPING_FIELDS.slice(idx+1).find(f=>!mappingState.draft[f.key]) || MAPPING_FIELDS.find(f=>!mappingState.draft[f.key]);
+      mappingState.armedField = next ? next.key : null;
+      renderMappingItemsPanel();
+      renderMappingPreview();
+    }
+
+    function resetCurrentMapping(){
+      if(!confirm('현재 편집 중인 매핑을 초기화하시겠습니까?')) return;
+      mappingState.draft={}; mappingState.armedField=MAPPING_FIELDS[0].key;
+      document.getElementById('mapping-selected-cell').textContent='-';
+      document.getElementById('mapping-validation-msg').textContent='';
+      renderMappingItemsPanel(); renderMappingPreview();
+    }
+
+    function saveMappingFromModal(){
+      const msgEl=document.getElementById('mapping-validation-msg');
+      const missing=REQUIRED_MAPPING_KEYS.filter(k=>mappingState.draft[k]==null || mappingState.draft[k]==='');
+      if(missing.length){ msgEl.textContent='필수 항목 미지정: '+missing.map(k=>MAPPING_FIELDS.find(f=>f.key===k).label).join(', '); return; }
+      const cellAddrCounts={};
+      MAPPING_FIELDS.filter(f=>f.kind==='cell').forEach(f=>{ const v=mappingState.draft[f.key]; if(v) cellAddrCounts[v]=(cellAddrCounts[v]||0)+1; });
+      const dup=Object.keys(cellAddrCounts).find(k=>cellAddrCounts[k]>1);
+      if(dup){ msgEl.textContent=`동일 셀(${dup})에 여러 항목이 매핑되었습니다. 각 항목은 서로 다른 셀을 사용해야 합니다.`; return; }
+      const t=batchTemplates.find(x=>x.id===mappingState.templateId); if(!t){ msgEl.textContent='Template을 찾을 수 없습니다.'; return; }
+      t.mapping=t.mapping||{};
+      t.mapping[mappingState.sheetName]={...mappingState.draft};
+      saveBatchStores();
+      document.getElementById('bm-status').textContent=`"${t.name}" · ${mappingState.sheetName} 시트의 셀 매핑을 저장했습니다.`;
+      renderBatchMaster();
+      closeMappingEditor();
+    }
+
+    // ----- BOM 원재료 데이터 → Batch Sheet 반영 -----
+    function flattenProductMaterials(p){
+      const list=[]; (p?.steps||[]).forEach(step=>(step.materials||[]).forEach(m=>list.push(m)));
+      return list;
+    }
+    function getLinkedTemplateAndSheet(p){
       const mapping=batchMappings[productKey(p)]||{};
       let template=batchTemplates.find(t=>t.id===mapping.baseSheetId);
-      if(!template) template=batchTemplates.find(t=>t.baseBomId===p.baseBomId);
-      if(!template){alert(`제품 ${p.name}에 연결된 Base Sheet가 없습니다. Batch Sheet Master에서 Excel을 등록하세요.`);return;}
-      const status=document.getElementById('bm-status'); status.textContent='Base Excel을 복제하고 BOM 데이터를 반영하는 중...';
+      if(!template) template=batchTemplates.find(t=>t.baseBomId && p.baseBomId && t.baseBomId===p.baseBomId);
+      if(!template) return {error:'해당 품목에 연결된 표준 Batch Sheet가 없습니다.'};
+      const sheetName=(mapping.sheetName && template.sheetNames.includes(mapping.sheetName)) ? mapping.sheetName : template.sheetNames[0];
+      const cellMap=(template.mapping||{})[sheetName];
+      if(!cellMap) return {error:'해당 Template의 Mapping 설정이 완료되지 않았습니다.', template, sheetName};
+      return {template, sheetName, cellMap};
+    }
+
+    function previewBatchSheetFromTemplate(){
+      const p=getSelectedProduct(); const box=document.getElementById('bm-preview-box'); box.classList.remove('hidden');
+      if(!p){ box.innerHTML='<div class="text-rose-400">선택한 품목에 사용할 BOM이 없습니다. 먼저 BOM 검색 탭에서 제품을 선택하세요.</div>'; return; }
+      const qty=parseFloat(document.getElementById('bm-production-qty').value || document.getElementById('bom-target-qty-input')?.value);
+      if(!Number.isFinite(qty)||qty<=0){ box.innerHTML='<div class="text-rose-400">Batch Size를 입력해주세요.</div>'; return; }
+      const link=getLinkedTemplateAndSheet(p);
+      if(link.error){ box.innerHTML=`<div class="text-rose-400">${esc(link.error)}</div>`; return; }
+      const materials=flattenProductMaterials(p);
+      box.innerHTML = `
+        <div class="flex justify-between"><span class="text-slate-400">품목명</span><strong class="text-white">${esc(p.name||'-')}</strong></div>
+        <div class="flex justify-between"><span class="text-slate-400">품목코드</span><strong class="text-white">${esc(p.code||'-')}</strong></div>
+        <div class="flex justify-between"><span class="text-slate-400">Batch Size</span><strong class="text-emerald-300">${fmt(qty,3)} kg</strong></div>
+        <div class="flex justify-between"><span class="text-slate-400">원재료 수</span><strong class="text-white">${materials.length}종</strong></div>
+        <div class="flex justify-between"><span class="text-slate-400">Template</span><strong class="text-white">${esc(link.template.name)} · ${esc(link.sheetName)}</strong></div>`;
+    }
+
+    async function generateBatchSheetFromTemplate(){
+      const p=getSelectedProduct(); if(!p){alert('선택한 품목에 사용할 BOM이 없습니다. 먼저 BOM 검색 탭에서 제품을 선택하세요.');return;}
+      const qty=parseFloat(document.getElementById('bm-production-qty').value || document.getElementById('bom-target-qty-input')?.value);
+      const status=document.getElementById('bm-status');
+      if(!Number.isFinite(qty)||qty<=0){ alert('Batch Size를 입력해주세요.'); return; }
+      const link=getLinkedTemplateAndSheet(p);
+      if(link.error){ status.textContent=link.error; alert(link.error); return; }
+      const {template, sheetName, cellMap}=link;
+      status.textContent='표준 Batch Sheet Template을 복제하고 BOM 계산 결과를 반영하는 중...';
       try{
-        const wb=new ExcelJS.Workbook(); await wb.xlsx.load(new Uint8Array(template.buffer));
-        const ws=wb.getWorksheet(mapping.sheetName || template.sheetNames[0]); if(!ws) throw new Error('Worksheet를 찾을 수 없습니다.');
-        // 제품명: 실제 Base의 D2 구조를 유지하며 값만 변경
-        if(ws.getCell('D2')) ws.getCell('D2').value=p.name || p.title || '';
-        // Batch size: 템플릿 수식은 보존하되, BOM 재료값을 매칭되는 행에 반영
+        const wb=new ExcelJS.Workbook(); await wb.xlsx.load(new Uint8Array(template.buffer)); // 원본 Template은 수정하지 않고 항상 복제본에만 반영
+        const ws=wb.getWorksheet(sheetName); if(!ws) throw new Error('지원하지 않는 Excel 구조입니다.');
         const basis=p.basisQty||1, multiplier=qty/basis;
-        (p.steps||[]).forEach(step=>(step.materials||[]).forEach(mat=>{
-          const row=findMaterialRow(ws,mat); if(!row) return;
-          const c=ws.getCell(row,4); if(typeof c.value==='number' || c.value==null) c.value=Number((mat.stdKg*multiplier).toFixed(3));
-          if(mat.code && !ws.getCell(row,2).value) ws.getCell(row,2).value=mat.code;
-        }));
-        const pigment=getProductPigment(p);
-        if(pigment){
-          const pc=mapping.pigmentCodeCell||'B17', pn=mapping.pigmentNameCell||'C17', pq=mapping.pigmentQtyCell||'D17';
-          ws.getCell(pc).value=pigment.code||''; ws.getCell(pn).value=pigment.name||''; ws.getCell(pq).value=Number((pigment.stdKg*multiplier).toFixed(3));
+        if(cellMap.itemCode) ws.getCell(cellMap.itemCode).value = p.code || '';
+        if(cellMap.itemName) ws.getCell(cellMap.itemName).value = p.name || p.title || '';
+        if(cellMap.batchSize) ws.getCell(cellMap.batchSize).value = Number(qty.toFixed(3));
+        const materials=flattenProductMaterials(p);
+        const startRow=Number(cellMap.materialStartRow);
+        const codeCol=colLetterToIdx(cellMap.materialCodeCol);
+        const nameCol=colLetterToIdx(cellMap.materialNameCol);
+        const qtyCol=colLetterToIdx(cellMap.materialQtyCol);
+        const sgCol=cellMap.materialSgCol ? colLetterToIdx(cellMap.materialSgCol) : null;
+        // 원재료 반복 행: 매핑된 시작 행의 서식(병합/테두리/글꼴 등)을 그대로 복제하여 원재료 개수만큼 아래로 확장 (하단 고정 문구는 밀려서 그대로 보존됨)
+        if(materials.length>1 && typeof ws.duplicateRow==='function'){
+          ws.duplicateRow(startRow, materials.length-1, true);
         }
-        const out='Batch Sheet_'+String(p.name||'제품').replace(/[\\/:*?"<>|]/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+        materials.forEach((mat,i)=>{
+          const r=startRow+i;
+          if(mat.code) ws.getCell(r,codeCol).value=mat.code;
+          ws.getCell(r,nameCol).value=mat.name||'';
+          ws.getCell(r,qtyCol).value=Number(((mat.stdKg||0)*multiplier).toFixed(3));
+          if(sgCol && mat.sg!=null) ws.getCell(r,sgCol).value=mat.sg;
+        });
+        const out='BatchSheet_'+String(p.name||'제품').replace(/[\\/:*?"<>|]/g,'_')+'_'+fmt(qty,3).replace(/,/g,'')+'kg.xlsx';
         const data=await wb.xlsx.writeBuffer(); const blob=new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=out;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-        status.textContent=`생성 완료: ${out} · 생산수량 ${qty.toFixed(3)} kg · Base 양식 유지`;
-      }catch(e){status.textContent='생성 실패: '+e.message;console.error(e);alert('Batch Sheet 생성 실패: '+e.message);}
+        status.textContent=`생성 완료: ${out} · Batch Size ${fmt(qty,3)} kg · 원재료 ${materials.length}종 · 원본 서식 유지`;
+      }catch(e){
+        status.textContent='Batch Sheet 생성 중 오류가 발생했습니다. Template 또는 Mapping 설정을 확인해주세요. ('+e.message+')';
+        console.error(e); alert(status.textContent);
+      }
     }
 
     // Initialize
     window.addEventListener('DOMContentLoaded', async () => {
-      switchTab('normal');
+      switchTab('bom');
       updateHistoryBadge();
       renderBomSearchResults();
       renderBatchMaster();
