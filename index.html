@@ -33,17 +33,6 @@
     #print-sheet .bs-title { font-size: 18px; font-weight: 800; text-align: center; }
     #print-sheet .bs-approve-box { border: 1px solid #000; width: 60px; height: 44px; text-align: center; font-size: 10px; }
     #print-sheet .bs-step-title { background: #eef0f3; font-weight: 700; }
-    /* Batch Sheet Template 셀 매핑 미리보기 (Excel 유사 격자) */
-    .mapping-preview-table { border-collapse: collapse; }
-    .mapping-preview-table th, .mapping-preview-table td { border: 1px solid #334155; padding: 3px 6px; white-space: nowrap; min-width: 46px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; color: #cbd5e1; }
-    .mapping-preview-table th.col-head, .mapping-preview-table th.row-head { background: #1e293b; color: #94a3b8; font-weight: 700; text-align: center; position: sticky; z-index: 2; }
-    .mapping-preview-table th.col-head { top: 0; }
-    .mapping-preview-table th.row-head { left: 0; }
-    .mapping-preview-table th.sticky-corner { position: sticky; top: 0; left: 0; background: #0f172a; z-index: 3; }
-    .mapping-preview-table td.mp-cell { cursor: pointer; background: #0f172a; position: relative; }
-    .mapping-preview-table td.mp-cell:hover { background: #1e2b45; outline: 1px solid #6366f1; }
-    .mapping-preview-table td.mp-assigned { background: #422006; outline: 2px solid #f59e0b; }
-    .mapping-preview-table .mp-badge { font-size: 9px; font-weight: 700; color: #fbbf24; white-space: nowrap; }
     #print-sheet .bs-mat-head { background: #dfe3e8; font-weight: 700; text-align: center; }
     @page { size: A4; margin: 10mm; }
   </style>
@@ -104,21 +93,22 @@
     <!-- Top Tab Navigation -->
     <div class="flex items-center justify-between border-b border-slate-800 pb-2">
       <div class="flex items-center gap-2">
-        <button id="tab-bom-btn" onclick="switchTab('bom')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30">
-          <i class="fa-solid fa-magnifying-glass text-amber-400"></i> BOM 검색 / 배치시트
-        </button>
-        <button id="tab-normal-btn" onclick="switchTab('normal')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
+        <button id="tab-normal-btn" onclick="switchTab('normal')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30">
           <i class="fa-solid fa-industry"></i> [생산배합 탭] 정규 원재료
         </button>
         <button id="tab-reclaim-btn" onclick="switchTab('reclaim')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
           <i class="fa-solid fa-recycle text-emerald-400"></i> [재생배합 탭] 부적합품/장기재고 투입
           <span id="reclaim-badge-count" class="hidden text-xs bg-emerald-500 text-slate-950 font-extrabold px-2 py-0.5 rounded-full">0kg</span>
         </button>
-        <button id="tab-master-btn" onclick="switchTab('master')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
-          <i class="fa-solid fa-database text-cyan-400"></i> 원재료 표준화 & 엑셀 마스터
+        <button id="tab-vendor-btn" onclick="switchTab('vendor')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i class="fa-solid fa-truck-field text-cyan-400"></i> 원재료·부재료 마스터
         </button>
-        <button id="tab-batchmaster-btn" onclick="switchTab('batchmaster')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
-          <i class="fa-solid fa-file-excel text-emerald-400"></i> Batch Sheet Master
+        <button id="tab-bom-btn" onclick="switchTab('bom')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i class="fa-solid fa-magnifying-glass text-amber-400"></i> BOM 검색 / 배치시트 인쇄
+        </button>
+        <button id="tab-cart-btn" onclick="switchTab('cart')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i class="fa-solid fa-cart-shopping text-amber-400"></i> BOM 장바구니
+          <span id="cart-badge-count" class="hidden text-xs bg-amber-500 text-slate-950 font-extrabold px-2 py-0.5 rounded-full">0</span>
         </button>
       </div>
       <div class="text-xs text-slate-400 hidden lg:block">
@@ -410,63 +400,60 @@
     </div>
 
     <!-- Master Data & Excel Upload Section (Tab 3) -->
-    <div id="master-view" class="hidden space-y-6">
+    <!-- 원재료·부재료 품목 마스터 (거래처 매핑용) -->
+    <div id="vendor-view" class="hidden space-y-6">
       <div class="bg-slate-800/90 border border-slate-700 p-6 rounded-xl space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700 pb-3">
           <div>
             <h2 class="text-base font-bold text-white flex items-center gap-2">
-              <i class="fa-solid fa-file-excel text-emerald-400"></i> 원재료 표준화 마스터 관리 및 엑셀 일괄 업로드
+              <i class="fa-solid fa-truck-field text-cyan-400"></i> 원재료·부재료 품목 마스터 (거래처 매핑)
             </h2>
             <p class="text-xs text-slate-400 mt-1">
-              현업에서 서로 다른 명칭(예: "탄칼", "중탄", "CCR", "오일")으로 작성된 양식을 표준 코드 및 명칭으로 자동 매핑합니다.
+              품목코드/품목명/거래처명을 등록해두면, BOM 장바구니의 원재료 소모량 집계 시 거래처명이 자동으로 매핑됩니다.
             </p>
           </div>
           <div class="flex items-center gap-2">
-            <button onclick="downloadMasterTemplateCsv()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition flex items-center gap-1.5">
-              <i class="fa-solid fa-download"></i> 표준 양식 다운로드 (CSV)
+            <button onclick="downloadVendorMasterTemplateCsv()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition flex items-center gap-1.5">
+              <i class="fa-solid fa-download"></i> 업로드 양식 다운로드 (CSV)
+            </button>
+            <button onclick="clearVendorMaster()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/40 transition flex items-center gap-1.5">
+              <i class="fa-solid fa-trash"></i> 전체 삭제
             </button>
           </div>
         </div>
 
         <!-- File Drag and Drop Area -->
-        <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-indigo-500 bg-slate-900/50 hover:bg-slate-900/80 rounded-xl p-6 text-center transition cursor-pointer" onclick="document.getElementById('excel-file-input').click()">
-          <input type="file" id="excel-file-input" accept=".csv, .txt" class="hidden" onchange="handleFileUpload(event)">
+        <div id="vendor-drop-zone" class="border-2 border-dashed border-slate-600 hover:border-cyan-500 bg-slate-900/50 hover:bg-slate-900/80 rounded-xl p-6 text-center transition cursor-pointer" onclick="document.getElementById('vendor-file-input').click()">
+          <input type="file" id="vendor-file-input" accept=".csv, .txt, .xlsx" class="hidden" onchange="handleVendorMasterUpload(event)">
           <div class="space-y-2">
-            <i class="fa-solid fa-cloud-arrow-up text-3xl text-indigo-400"></i>
-            <p class="text-sm font-semibold text-slate-200">현업 배합표 / 원재료 엑셀(CSV) 파일을 여기로 드래그하거나 클릭하여 업로드</p>
-            <p class="text-xs text-slate-400">지원 형식: .csv, .txt (컬럼: 원재료명 또는 코드, 배합비 또는 투입량, 포장단위)</p>
+            <i class="fa-solid fa-cloud-arrow-up text-3xl text-cyan-400"></i>
+            <p class="text-sm font-semibold text-slate-200">품목 마스터 엑셀/CSV 파일을 여기로 드래그하거나 클릭하여 업로드</p>
+            <p class="text-xs text-slate-400">컬럼 구성: 품목코드, 품목명, 거래처명 (.csv, .xlsx)</p>
           </div>
         </div>
 
-        <!-- Alias Matching Simulator Test -->
-        <div class="bg-slate-900/80 border border-slate-700/80 p-4 rounded-xl space-y-2">
-          <label class="block text-xs font-bold text-slate-300">
-            <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> 현장 별칭(Alias) 실시간 표준화 매칭 테스트:
-          </label>
-          <div class="flex items-center gap-2">
-            <input type="text" id="alias-test-input" placeholder="예: 중탄, 탄칼, 107오일, 가교제, 카본 입력 후 확인" oninput="testAliasMatch(this.value)" class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-indigo-500">
-            <span id="alias-test-result" class="text-xs font-mono text-emerald-400 font-semibold px-3 py-2 bg-slate-800 rounded-lg border border-slate-700">
-              결과가 여기에 표시됩니다.
-            </span>
-          </div>
+        <!-- Manual add row -->
+        <div class="bg-slate-900/80 border border-slate-700/80 p-3 rounded-xl flex flex-wrap items-end gap-2">
+          <div><label class="block text-[11px] text-slate-400 mb-1">품목코드</label><input id="vendor-add-code" class="w-36 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white"></div>
+          <div><label class="block text-[11px] text-slate-400 mb-1">품목명</label><input id="vendor-add-name" class="w-48 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white"></div>
+          <div><label class="block text-[11px] text-slate-400 mb-1">거래처명</label><input id="vendor-add-vendor" class="w-40 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white"></div>
+          <button onclick="addVendorMasterRow()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white flex items-center gap-1.5"><i class="fa-solid fa-plus"></i> 추가</button>
         </div>
 
-        <!-- Standard Master Material Table -->
+        <!-- Vendor Master Table -->
         <div class="space-y-2">
-          <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">표준 원재료 마스터 목록 (현재 등록 12종)</h3>
-          <div class="overflow-x-auto border border-slate-700 rounded-lg">
+          <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">등록된 품목 마스터 (<span id="vendor-master-count">0</span>건)</h3>
+          <div class="overflow-x-auto border border-slate-700 rounded-lg max-h-96">
             <table class="w-full text-left text-xs border-collapse">
               <thead>
-                <tr class="bg-slate-900 text-slate-400 font-semibold border-b border-slate-700">
-                  <th class="py-2.5 px-3">표준 코드</th>
-                  <th class="py-2.5 px-3">표준 품명</th>
-                  <th class="py-2.5 px-3">카테고리</th>
-                  <th class="py-2.5 px-3">기본 포장</th>
-                  <th class="py-2.5 px-3">색소여부</th>
-                  <th class="py-2.5 px-3">등록된 현장 별칭(Synonyms)</th>
+                <tr class="bg-slate-900 text-slate-400 font-semibold border-b border-slate-700 sticky top-0">
+                  <th class="py-2.5 px-3">품목코드</th>
+                  <th class="py-2.5 px-3">품목명</th>
+                  <th class="py-2.5 px-3">거래처명</th>
+                  <th class="py-2.5 px-3 text-center">삭제</th>
                 </tr>
               </thead>
-              <tbody id="master-materials-tbody" class="divide-y divide-slate-800">
+              <tbody id="vendor-master-tbody" class="divide-y divide-slate-800">
                 <!-- Injected via JS -->
               </tbody>
             </table>
@@ -475,97 +462,51 @@
       </div>
     </div>
 
-    <!-- Batch Sheet Master -->
-    <div id="batchmaster-view" class="hidden space-y-6">
-      <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-4">
-        <div class="flex items-center justify-between gap-3 flex-wrap">
+    <!-- BOM 장바구니 및 원재료 소모량 통합 조회 -->
+    <div id="cart-view" class="hidden space-y-6">
+      <div class="bg-slate-800/90 border border-slate-700 p-6 rounded-xl space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700 pb-3">
           <div>
-            <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2"><i class="fa-solid fa-file-excel text-emerald-400"></i> 표준 Batch Sheet Template 목록</h2>
-            <p class="text-[11px] text-slate-400 mt-1">업로드한 원본 Excel의 서식(병합/글꼴/테두리/인쇄영역 등)은 그대로 보존되고, 매핑된 셀의 값만 자동으로 채워집니다.</p>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-cart-shopping text-amber-400"></i> BOM 장바구니
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">BOM 검색 탭에서 "장바구니에 추가"로 담은 제품들의 목록입니다. 여러 제품을 함께 담아 필요한 원재료·부재료 소모량을 한 번에 계산합니다.</p>
           </div>
-          <label class="cursor-pointer px-3 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">
-            <i class="fa-solid fa-upload mr-1"></i> 표준 Batch Sheet 업로드 (.xlsx)
-            <input id="batchmaster-file" type="file" accept=".xlsx" class="hidden" onchange="handleBaseExcelUpload(event)">
-          </label>
+          <button onclick="clearCart()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/40 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-trash"></i> 장바구니 비우기
+          </button>
         </div>
-        <div id="batchmaster-list" class="space-y-2"></div>
+        <div id="cart-items-list" class="space-y-2"></div>
       </div>
 
-      <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-4">
+      <div class="bg-slate-800/90 border border-slate-700 p-6 rounded-xl space-y-3">
         <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-link text-cyan-400 mr-1"></i> 품목 ↔ Template 연결</h2>
-            <p class="text-[11px] text-slate-400 mt-1">품목(BOM)별로 사용할 표준 Batch Sheet Template과 Worksheet만 지정합니다. 셀 매핑 자체는 Template에서 한 번만 설정하면 같은 Template을 쓰는 모든 품목에 재사용됩니다.</p>
-          </div>
+          <h2 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-boxes-stacked text-indigo-400"></i> 원재료·부재료 소모량 통합 (품목별)</h2>
+          <button onclick="downloadCartMaterialsCsv()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white transition flex items-center gap-1.5">
+            <i class="fa-solid fa-download"></i> 발주용 CSV 다운로드
+          </button>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div><label class="text-[11px] text-slate-400">품목 검색</label><input id="bm-product-search" oninput="renderBatchMappingProducts()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="제품명 / 제품코드"></div>
-          <div><label class="text-[11px] text-slate-400">선택 품목</label><select id="bm-product-select" onchange="loadBatchMappingEditor()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
-        </div>
-        <div id="batchmapping-editor" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-slate-700 pt-4">
-          <div><label class="text-[11px] text-slate-400">Template</label><select id="bm-base-select" onchange="onBmBaseSelectChange()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
-          <div><label class="text-[11px] text-slate-400">Worksheet</label><select id="bm-sheet-select" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"></select></div>
-          <div class="md:col-span-2 flex items-center gap-2 flex-wrap">
-            <button onclick="saveBatchMapping()" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">연결 저장</button>
-            <button onclick="clearBatchMapping()" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold">연결 초기화</button>
-            <button onclick="openMappingEditorForCurrentSelection()" class="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold"><i class="fa-solid fa-arrow-pointer mr-1"></i> 이 Template 셀 매핑 열기</button>
-          </div>
+        <div class="overflow-x-auto border border-slate-700 rounded-lg">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-900 text-slate-400 font-semibold border-b border-slate-700">
+                <th class="py-2.5 px-3">품목코드</th>
+                <th class="py-2.5 px-3">품목명</th>
+                <th class="py-2.5 px-3 text-right">수량 (kg)</th>
+                <th class="py-2.5 px-3">거래처명</th>
+              </tr>
+            </thead>
+            <tbody id="cart-materials-tbody" class="divide-y divide-slate-800"></tbody>
+          </table>
         </div>
       </div>
 
-      <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-3">
-        <h2 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-gears text-amber-400 mr-1"></i> Batch Sheet 생성</h2>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div><label class="text-[11px] text-slate-400">현재 선택 BOM</label><div id="bm-selected-product" class="mt-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white">BOM 검색 탭에서 제품을 선택하세요.</div></div>
-          <div><label class="text-[11px] text-slate-400">Batch Size (생산수량, kg)</label><input id="bm-production-qty" type="number" step="0.001" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="예: 1000"></div>
-          <div class="flex items-end gap-2">
-            <button onclick="previewBatchSheetFromTemplate()" class="w-1/2 px-4 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold"><i class="fa-solid fa-eye mr-1"></i> 미리보기</button>
-            <button onclick="generateBatchSheetFromTemplate()" class="w-1/2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"><i class="fa-solid fa-download mr-1"></i> Excel 다운로드</button>
-          </div>
-        </div>
-        <div id="bm-preview-box" class="hidden p-3 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-300 space-y-1"></div>
-        <div id="bm-status" class="text-[11px] text-slate-400"></div>
+      <div class="bg-slate-800/90 border border-slate-700 p-6 rounded-xl space-y-3">
+        <h2 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-building text-emerald-400"></i> 거래처별 소모량 취합</h2>
+        <div id="cart-vendor-summary" class="space-y-2"></div>
       </div>
     </div>
 
-    <!-- Batch Sheet Template Cell-Mapping Modal (click-to-map, no manual cell address typing) -->
-    <div id="mapping-modal" class="fixed inset-0 z-50 hidden bg-black/70 backdrop-blur-sm items-center justify-center p-3">
-      <div class="bg-slate-900 border border-slate-700 w-full max-w-6xl h-[92vh] rounded-xl shadow-2xl flex flex-col overflow-hidden">
-        <div class="p-3.5 border-b border-slate-700 flex items-center justify-between gap-3 flex-wrap bg-slate-900/95">
-          <div>
-            <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-table-cells text-amber-400"></i> Batch Sheet 셀 매핑 <span id="mapping-modal-title" class="text-amber-300"></span></h3>
-            <p class="text-[11px] text-slate-400 mt-0.5">왼쪽에서 매핑 항목을 클릭한 뒤, 오른쪽 미리보기에서 해당 값이 들어갈 셀을 클릭하세요. 셀 주소를 직접 입력할 필요가 없습니다.</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <label class="text-[11px] text-slate-400">Worksheet</label>
-            <select id="mapping-sheet-select" onchange="onMappingSheetChange()" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white"></select>
-            <button onclick="closeMappingEditor()" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"><i class="fa-solid fa-xmark text-lg"></i></button>
-          </div>
-        </div>
-
-        <div class="flex-1 flex overflow-hidden">
-          <!-- Mapping items panel -->
-          <div class="w-64 shrink-0 border-r border-slate-700 overflow-y-auto p-3 space-y-1.5" id="mapping-items-panel"></div>
-
-          <!-- Excel preview panel -->
-          <div class="flex-1 overflow-auto p-3 bg-slate-950/40" id="mapping-preview-panel">
-            <div class="text-xs text-slate-500">Template을 불러오는 중...</div>
-          </div>
-        </div>
-
-        <div class="p-3 border-t border-slate-700 flex items-center justify-between gap-3 bg-slate-900/95">
-          <div class="text-[11px] text-slate-400">선택한 셀: <strong id="mapping-selected-cell" class="text-amber-300 font-mono">-</strong> · 현재 매핑 중인 항목: <strong id="mapping-armed-item" class="text-cyan-300">-</strong></div>
-          <div class="flex items-center gap-2">
-            <span id="mapping-validation-msg" class="text-[11px] text-rose-400"></span>
-            <button onclick="resetCurrentMapping()" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold">매핑 초기화</button>
-            <button onclick="saveMappingFromModal()" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"><i class="fa-solid fa-floppy-disk mr-1"></i> 매핑 저장</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- BOM Search & Batch Sheet Print Tab -->
-    <div id="bom-view" class="hidden space-y-6">
       <div class="bg-slate-800/90 border border-slate-700 p-5 rounded-xl space-y-3">
         <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2">
           <i class="fa-solid fa-magnifying-glass text-amber-400"></i> 제품명 / 제품코드 다중검색
@@ -637,11 +578,11 @@
             <button onclick="applyBomToReclaimedMaterials()" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5 shadow">
               <i class="fa-solid fa-recycle"></i> 부적합품/장기재고 탭에 적용
             </button>
+            <button onclick="saveBomEditsToSupabase()" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-rose-700 hover:bg-rose-600 text-white transition flex items-center gap-1.5 shadow">
+              <i class="fa-solid fa-floppy-disk"></i> BOM 수정사항 저장
+            </button>
             <button onclick="printBomBatchSheet()" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center gap-1.5 shadow">
               <i class="fa-solid fa-print"></i> 이 BOM 배치시트 인쇄 (xlsx 양식)
-            </button>
-            <button onclick="saveCurrentBomToDb()" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-1.5 shadow" title="원재료 추가/삭제/색소 체크 등 편집 내용을 Supabase DB에 저장">
-              <i class="fa-solid fa-cloud-arrow-up"></i> BOM 편집내용 DB저장
             </button>
           </div>
         </div>
@@ -795,13 +736,15 @@
     ];
 
     let state = {
-      activeTab: 'normal', // 'normal' | 'reclaim' | 'master'
+      activeTab: 'normal', // 'normal' | 'reclaim' | 'vendor' | 'bom' | 'cart'
       specificGravity: 1.25,
       packagingId: 'cartridge-300',
       targetQuantityEa: 3000,
       isPigmentExcludedMode: false,
       activeOverrideId: null,
       appliedBomLabel: null,
+      cart: [],
+      vendorMaster: [],
       materials: [
         { id: 'm1', code: 'RM-PDMS-107', name: 'Base Polymer 107 (20,000 cSt)', category: 'polymer', isPigment: false, packageUnit: '1,000L IBC', bagWeightKg: 1000, baseRatioPct: 38.0, manualOverrideKg: null },
         { id: 'm2', code: 'RM-PDMS-100', name: 'Plasticizer Dimethicone 100 cSt', category: 'plasticizer', isPigment: false, packageUnit: '200kg Drum', bagWeightKg: 200, baseRatioPct: 15.0, manualOverrideKg: null },
@@ -838,6 +781,7 @@
     function compute() {
       const pkg = PACKAGING_SPECS.find(p => p.id === state.packagingId) || PACKAGING_SPECS[2];
       const sg = Number(state.specificGravity) || 1.25;
+      const finalTargetEa = Number(state.targetQuantityEa) || 0;
       
       let unitNetWeightKg = 0.375;
       if (pkg.category === 'drum') {
@@ -876,27 +820,10 @@
 
       const totalEffectiveRatio = Object.values(effectiveRatios).reduce((a, b) => a + b, 0);
 
-      // Forward calculation (기본) 또는 포장 단위 역산(Inverse Calculation, 원료 kg 수기 고정 시) 분기
-      let finalTargetEa, totalBatchKg, productionBatchKg;
-      const overriddenMat = state.activeOverrideId ? state.materials.find(m => m.id === state.activeOverrideId) : null;
-      const hasOverride = !!(overriddenMat && overriddenMat.manualOverrideKg != null && overriddenMat.manualOverrideKg > 0);
-
-      if (hasOverride) {
-        // 역산: 고정된 원료 투입량(kg)과 그 원료의 배합비로부터 전체 생산/총 배치량과 목표 완제품 수량을 거꾸로 계산
-        const overriddenFraction = totalEffectiveRatio > 0 ? (effectiveRatios[overriddenMat.id] || 0) / totalEffectiveRatio : 0;
-        productionBatchKg = overriddenFraction > 0 ? overriddenMat.manualOverrideKg / overriddenFraction : 0;
-        totalBatchKg = productionBatchKg + reclaimedTotalKg;
-        const requiredPackedKgFromOverride = totalBatchKg * (1 - totalLoss / 100);
-        finalTargetEa = unitNetWeightKg > 0 ? requiredPackedKgFromOverride / unitNetWeightKg : 0;
-      } else {
-        // 정방향: 목표 완제품 수량을 기준으로 총 배치량 계산
-        finalTargetEa = state.targetQuantityEa;
-        const requiredPackedKgForward = finalTargetEa * unitNetWeightKg;
-        totalBatchKg = requiredPackedKgForward / (1 - totalLoss / 100);
-        productionBatchKg = Math.max(0, totalBatchKg - reclaimedTotalKg);
-      }
-
+      // Forward calculation for overall batch target
       const requiredPackedKg = finalTargetEa * unitNetWeightKg;
+      let totalBatchKg = requiredPackedKg / (1 - totalLoss / 100);
+      let productionBatchKg = Math.max(0, totalBatchKg - reclaimedTotalKg);
       const totalLossKg = totalBatchKg * (totalLoss / 100);
 
       const rows = state.materials.map(m => {
@@ -914,9 +841,9 @@
           const bags = Math.floor(finalKg / m.bagWeightKg);
           const rem = finalKg % m.bagWeightKg;
           let unit = '포대';
-          if (m.packageUnit.includes('Pail')) unit = '캔';
-          else if (m.packageUnit.includes('Drum')) unit = '드럼';
-          else if (m.packageUnit.includes('IBC')) unit = 'IBC';
+          if ((m.packageUnit || '').includes('Pail')) unit = '캔';
+          else if ((m.packageUnit || '').includes('Drum')) unit = '드럼';
+          else if ((m.packageUnit || '').includes('IBC')) unit = 'IBC';
 
           if (bags > 0 && rem < 0.05) {
             pkgEstimate = `${bags}${unit} 정량 (${bags * m.bagWeightKg}kg)`;
@@ -1116,27 +1043,6 @@
         rbody.appendChild(rtr);
       });
       document.getElementById('reclaim-total-kg').innerText = fmt(calc.reclaimedTotalKg) + ' kg';
-
-      // Master items table
-      const mtbody = document.getElementById('master-materials-tbody');
-      mtbody.innerHTML = '';
-      MASTER_DATA.forEach(m => {
-        const mtr = document.createElement('tr');
-        mtr.className = 'hover:bg-slate-800/60';
-        mtr.innerHTML = `
-          <td class="py-2 px-3 font-mono font-bold text-indigo-300">${m.code}</td>
-          <td class="py-2 px-3 text-white font-medium">${m.name}</td>
-          <td class="py-2 px-3 text-slate-400">${m.category}</td>
-          <td class="py-2 px-3 text-slate-300">${m.defaultPackageUnit}</td>
-          <td class="py-2 px-3">${m.isPigment ? '<span class="text-pink-400 font-bold">색소</span>' : '<span class="text-slate-400">일반</span>'}</td>
-          <td class="py-2 px-3">
-            <div class="flex flex-wrap gap-1">
-              ${m.aliases.map(a => `<span class="bg-slate-800 text-cyan-300 px-1.5 py-0.5 rounded text-[10px] border border-slate-700">${a}</span>`).join('')}
-            </div>
-          </td>
-        `;
-        mtbody.appendChild(mtr);
-      });
     }
 
     // --- Tab Switching ---
@@ -1144,25 +1050,25 @@
       state.activeTab = tab;
       const normalBtn = document.getElementById('tab-normal-btn');
       const reclaimBtn = document.getElementById('tab-reclaim-btn');
-      const masterBtn = document.getElementById('tab-master-btn');
+      const vendorBtn = document.getElementById('tab-vendor-btn');
       const bomBtn = document.getElementById('tab-bom-btn');
-      const batchmasterBtn = document.getElementById('tab-batchmaster-btn');
+      const cartBtn = document.getElementById('tab-cart-btn');
       const simView = document.getElementById('simulator-view');
-      const masterView = document.getElementById('master-view');
+      const vendorView = document.getElementById('vendor-view');
       const reclaimPanel = document.getElementById('reclaim-panel');
       const bomView = document.getElementById('bom-view');
-      const batchmasterView = document.getElementById('batchmaster-view');
+      const cartView = document.getElementById('cart-view');
       const modeLabel = document.getElementById('current-mode-label');
 
-      [normalBtn, reclaimBtn, masterBtn, bomBtn, batchmasterBtn].forEach(b => {
+      [normalBtn, reclaimBtn, vendorBtn, bomBtn, cartBtn].forEach(b => {
         b.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300';
       });
 
       simView.classList.add('hidden');
-      masterView.classList.add('hidden');
+      vendorView.classList.add('hidden');
       reclaimPanel.classList.add('hidden');
       bomView.classList.add('hidden');
-      batchmasterView.classList.add('hidden');
+      cartView.classList.add('hidden');
 
       if (tab === 'normal') {
         normalBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30';
@@ -1181,18 +1087,18 @@
         modeLabel.innerText = 'BOM 검색 / 배치시트 인쇄';
         modeLabel.className = 'font-bold text-amber-300';
         renderBomSearchResults();
-      } else if (tab === 'batchmaster') {
-        batchmasterBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-emerald-600 text-white shadow-lg shadow-emerald-600/30';
-        batchmasterView.classList.remove('hidden');
-        modeLabel.innerText = 'Batch Sheet Master 관리';
-        modeLabel.className = 'font-bold text-emerald-300';
-        renderBatchMaster();
-        renderBatchMappingProducts();
+      } else if (tab === 'cart') {
+        cartBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-amber-600 text-white shadow-lg shadow-amber-600/30';
+        cartView.classList.remove('hidden');
+        modeLabel.innerText = 'BOM 장바구니 / 원재료 소모량 통합';
+        modeLabel.className = 'font-bold text-amber-300';
+        renderCart();
       } else {
-        masterBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-cyan-600 text-white shadow-lg shadow-cyan-600/30';
-        masterView.classList.remove('hidden');
-        modeLabel.innerText = '원재료 표준화 마스터 관리';
+        vendorBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-cyan-600 text-white shadow-lg shadow-cyan-600/30';
+        vendorView.classList.remove('hidden');
+        modeLabel.innerText = '원재료·부재료 품목 마스터 관리';
         modeLabel.className = 'font-bold text-cyan-300';
+        renderVendorMaster();
       }
       render();
     }
@@ -1985,7 +1891,7 @@
     }
     function searchProducts(query) {
       const tokens = tokenizeQuery(query);
-      if (tokens.length === 0) return state.productDb;
+      if (tokens.length === 0) return []; // 검색어를 입력하기 전에는 BOM을 표시하지 않음
       return state.productDb.filter(p => {
         const hay = normalizeSearchText(p.code + ' ' + p.name + ' ' + (p.bomVersion || ''));
         return tokens.every(t => hay.includes(t));
@@ -1997,6 +1903,10 @@
       const results = searchProducts(q);
       const box = document.getElementById('bom-search-results');
       if (!box) return;
+      if (tokenizeQuery(q).length === 0) {
+        box.innerHTML = `<div class="text-xs text-slate-500 col-span-2 py-6 text-center"><i class="fa-solid fa-magnifying-glass mb-1.5 block text-lg opacity-50"></i>제품명 또는 제품코드를 입력해 검색하세요. (전체 ${state.productDb.length}개 BOM 등록됨)</div>`;
+        return;
+      }
       if (results.length === 0) {
         box.innerHTML = '<div class="text-xs text-slate-500 col-span-2 py-3 text-center">일치하는 제품이 없습니다. MES BOM을 업로드하거나 새 제품을 등록해 보세요.</div>';
         return;
@@ -2057,46 +1967,57 @@
     }
 
     function applyBomToNormalMaterials() {
-      const p = getSelectedProduct();
-      if (!p) { alert('먼저 BOM 검색 결과에서 제품을 선택해주세요.'); return; }
-      const flatMats = flattenBomMaterials(p);
-      if (flatMats.length === 0) { alert('이 BOM에는 계량된 원재료가 없습니다.'); return; }
-      const totalKg = flatMats.reduce((a, m) => a + (m.stdKg || 0), 0) || 1;
-      state.materials = flatMats.map((m, idx) => ({
-        id: `m_bom_${idx}_${Date.now()}`,
-        code: m.code || '',
-        name: m.name || '',
-        category: m.isPigment ? 'pigment' : guessMaterialCategory(m.code, m.name),
-        isPigment: m.isPigment != null ? !!m.isPigment : guessIsPigment(m.code, m.name),
-        packageUnit: '25kg 지대',
-        bagWeightKg: 25,
-        baseRatioPct: (m.stdKg || 0) / totalKg * 100,
-        manualOverrideKg: null
-      }));
-      state.appliedBomLabel = `${p.name} · ${p.code || '-'}${p.bomVersion ? ' · ' + p.bomVersion : ''}`;
-      switchTab('normal');
-      render();
-      alert(`"${p.name}" BOM의 원재료 ${state.materials.length}종을 정규원재료 탭에 적용했습니다.\n(원재료 구성비는 표준투입량 비율로 자동 환산되었습니다. 색소/카테고리 자동 추정 결과를 확인해주세요.)`);
+      try {
+        const p = getSelectedProduct();
+        if (!p) { alert('먼저 BOM 검색 결과에서 제품을 선택해주세요.'); return; }
+        const flatMats = flattenBomMaterials(p);
+        if (flatMats.length === 0) { alert('이 BOM에는 계량된 원재료가 없습니다.'); return; }
+        const totalKg = flatMats.reduce((a, m) => a + (Number(m.stdKg) || 0), 0) || 1;
+        const newMaterials = flatMats.map((m, idx) => ({
+          id: `m_bom_${idx}_${Date.now()}`,
+          code: m.code || '',
+          name: m.name || '(이름없음)',
+          category: guessMaterialCategory(m.code, m.name),
+          isPigment: (m.isPigment !== undefined && m.isPigment !== null) ? !!m.isPigment : guessIsPigment(m.code, m.name),
+          packageUnit: '25kg 지대',
+          bagWeightKg: 25,
+          baseRatioPct: (Number(m.stdKg) || 0) / totalKg * 100,
+          manualOverrideKg: null
+        }));
+        state.materials = newMaterials;
+        state.appliedBomLabel = `${p.name} · ${p.code || '-'}${p.bomVersion ? ' · ' + p.bomVersion : ''}`;
+        switchTab('normal');
+        render();
+        alert(`"${p.name}" BOM의 원재료 ${state.materials.length}종을 정규원재료 탭에 적용했습니다.\n(원재료 구성비는 표준투입량 비율로 자동 환산되었습니다. 색소 여부는 BOM에서 체크한 값을 그대로 반영했습니다.)`);
+      } catch (e) {
+        console.error('정규원재료 적용 실패:', e);
+        alert('정규원재료 탭 적용 중 오류가 발생했습니다:\n' + (e.message || e));
+      }
     }
 
     function applyBomToReclaimedMaterials() {
-      const p = getSelectedProduct();
-      if (!p) { alert('먼저 BOM 검색 결과에서 제품을 선택해주세요.'); return; }
-      const flatMats = flattenBomMaterials(p);
-      if (flatMats.length === 0) { alert('이 BOM에는 계량된 원재료가 없습니다.'); return; }
-      state.reclaimedMaterials = flatMats.map((m, idx) => ({
-        id: `r_bom_${idx}_${Date.now()}`,
-        lotNo: '',
-        name: m.name || '',
-        source: `BOM(${p.code || p.name})에서 적용됨`,
-        quantityKg: 0,
-        testStatus: 'conditional',
-        notes: m.code ? `원재료코드: ${m.code} · 로트번호/재고수량을 직접 입력해주세요.` : '로트번호/재고수량을 직접 입력해주세요.'
-      }));
-      state.appliedBomLabel = `${p.name} · ${p.code || '-'}${p.bomVersion ? ' · ' + p.bomVersion : ''} (재생배합용)`;
-      switchTab('reclaim');
-      render();
-      alert(`"${p.name}" BOM의 원재료 ${state.reclaimedMaterials.length}종을 부적합품/장기재고 탭에 적용했습니다.\n각 항목의 로트번호와 실제 재고수량(kg)을 입력해주세요.`);
+      try {
+        const p = getSelectedProduct();
+        if (!p) { alert('먼저 BOM 검색 결과에서 제품을 선택해주세요.'); return; }
+        const flatMats = flattenBomMaterials(p);
+        if (flatMats.length === 0) { alert('이 BOM에는 계량된 원재료가 없습니다.'); return; }
+        state.reclaimedMaterials = flatMats.map((m, idx) => ({
+          id: `r_bom_${idx}_${Date.now()}`,
+          lotNo: '',
+          name: m.name || '(이름없음)',
+          source: `BOM(${p.code || p.name})에서 적용됨`,
+          quantityKg: 0,
+          testStatus: 'conditional',
+          notes: m.code ? `원재료코드: ${m.code} · 로트번호/재고수량을 직접 입력해주세요.` : '로트번호/재고수량을 직접 입력해주세요.'
+        }));
+        state.appliedBomLabel = `${p.name} · ${p.code || '-'}${p.bomVersion ? ' · ' + p.bomVersion : ''} (재생배합용)`;
+        switchTab('reclaim');
+        render();
+        alert(`"${p.name}" BOM의 원재료 ${state.reclaimedMaterials.length}종을 부적합품/장기재고 탭에 적용했습니다.\n각 항목의 로트번호와 실제 재고수량(kg)을 입력해주세요.`);
+      } catch (e) {
+        console.error('부적합품/장기재고 적용 실패:', e);
+        alert('부적합품/장기재고 탭 적용 중 오류가 발생했습니다:\n' + (e.message || e));
+      }
     }
 
     // 목표 생산수량을 입력하면 기준생산수량(basisQty) 대비 배수를 자동 계산
@@ -2144,21 +2065,16 @@
       container.innerHTML = p.steps.map((step, si) => {
         if (step.materials.length === 0) return `
           <div class="border border-slate-700 rounded-lg overflow-hidden">
-            <div class="bg-slate-900/80 px-3 py-2 text-xs font-bold text-amber-300 flex items-center justify-between">
-              <span>${step.title} <span class="text-slate-500 font-normal">(계량 원료 없음 · 공정 지시만 존재)</span></span>
-              <button onclick="addBomMaterial('${step.id}')" class="px-2.5 py-1 text-[11px] font-bold rounded bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1"><i class="fa-solid fa-plus"></i> 원재료 추가</button>
-            </div>
+            <div class="bg-slate-900/80 px-3 py-2 text-xs font-bold text-amber-300">${step.title} <span class="text-slate-500 font-normal">(계량 원료 없음 · 공정 지시만 존재)</span></div>
           </div>`;
         const rows = step.materials.map((mat, mi) => {
           const b = bomMaterialBounds(mat);
+          const isPig = !!mat.isPigment;
           return `
-          <tr class="border-t border-slate-700/60${mat.isPigment ? ' bg-fuchsia-500/5' : ''}">
+          <tr class="border-t border-slate-700/60 ${isPig ? 'bg-pink-500/5' : ''}">
             <td class="px-2 py-1.5 text-center text-slate-400">${mi + 1}</td>
             <td class="px-2 py-1.5"><input value="${mat.code}" onchange="onBomMatFieldChange('${step.id}',${mi},'code',this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-slate-200"></td>
             <td class="px-2 py-1.5"><input value="${mat.name}" onchange="onBomMatFieldChange('${step.id}',${mi},'name',this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white font-semibold"></td>
-            <td class="px-2 py-1.5 text-center">
-              <input type="checkbox" ${mat.isPigment ? 'checked' : ''} onchange="onBomMatFieldChange('${step.id}',${mi},'isPigment',this.checked)" class="w-4 h-4 accent-fuchsia-500 cursor-pointer" title="색소(안료) 원재료 여부">
-            </td>
             <td class="px-2 py-1.5"><input type="number" step="0.01" value="${mat.stdKg}" onchange="onBomMatFieldChange('${step.id}',${mi},'stdKg',parseFloat(this.value)||0)" class="w-24 bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-emerald-300 font-mono text-right"></td>
             <td class="px-2 py-1.5 text-right font-mono text-indigo-300">${fmt(b.applied, 2)}</td>
             <td class="px-2 py-1.5 text-right font-mono text-slate-400">${fmt(b.lower, 3)}</td>
@@ -2166,7 +2082,10 @@
             <td class="px-2 py-1.5"><input type="number" step="0.1" value="${mat.tolerancePct != null ? mat.tolerancePct : 1.0}" onchange="onBomMatFieldChange('${step.id}',${mi},'tolerancePct',parseFloat(this.value)||1)" class="w-14 bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white font-mono text-right">%</td>
             <td class="px-2 py-1.5"><input value="${mat.inputMethod || ''}" onchange="onBomMatFieldChange('${step.id}',${mi},'inputMethod',this.value)" class="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-slate-300"></td>
             <td class="px-2 py-1.5 text-center">
-              <button onclick="deleteBomMaterial('${step.id}',${mi})" class="text-rose-400 hover:text-rose-300" title="이 원재료 삭제"><i class="fa-solid fa-trash-can"></i></button>
+              <input type="checkbox" ${isPig ? 'checked' : ''} onchange="onBomMatFieldChange('${step.id}',${mi},'isPigment',this.checked)" class="w-4 h-4 accent-pink-500 cursor-pointer" title="색소/안료 여부">
+            </td>
+            <td class="px-2 py-1.5 text-center">
+              <button onclick="deleteBomMaterialRow('${step.id}',${mi})" class="text-rose-400 hover:text-rose-300" title="이 원재료 삭제"><i class="fa-solid fa-trash"></i></button>
             </td>
           </tr>`;
         }).join('');
@@ -2181,21 +2100,310 @@
                 <thead>
                   <tr class="bg-slate-900/50 text-slate-500 text-[10px] uppercase">
                     <th class="px-2 py-1.5">순번</th><th class="px-2 py-1.5">CODE</th><th class="px-2 py-1.5">원재료명</th>
-                    <th class="px-2 py-1.5 text-center">색소</th>
                     <th class="px-2 py-1.5 text-right">표준투입량(kg)</th><th class="px-2 py-1.5 text-right">적용(x배수)</th>
                     <th class="px-2 py-1.5 text-right">계량하한</th><th class="px-2 py-1.5 text-right">계량상한</th>
-                    <th class="px-2 py-1.5">공차%</th><th class="px-2 py-1.5">투입방법</th><th class="px-2 py-1.5 text-center">삭제</th>
+                    <th class="px-2 py-1.5">공차%</th><th class="px-2 py-1.5">투입방법</th>
+                    <th class="px-2 py-1.5 text-center">색소</th><th class="px-2 py-1.5 text-center">삭제</th>
                   </tr>
                 </thead>
                 <tbody>${rows}</tbody>
               </table>
             </div>
-            <div class="px-3 py-2 bg-slate-900/40 border-t border-slate-700/60">
-              <button onclick="addBomMaterial('${step.id}')" class="px-2.5 py-1 text-[11px] font-bold rounded bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1"><i class="fa-solid fa-plus"></i> 원재료 추가</button>
+            <div class="bg-slate-900/60 px-3 py-2 border-t border-slate-700/60">
+              <button onclick="addBomMaterialRow('${step.id}')" class="text-[11px] px-2.5 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white font-semibold flex items-center gap-1.5">
+                <i class="fa-solid fa-plus"></i> 원재료 추가
+              </button>
             </div>
           </div>`;
       }).join('');
     }
+
+    // --- BOM 수정: 원재료 추가/삭제 ---
+    function addBomMaterialRow(stepId) {
+      const p = getSelectedProduct();
+      if (!p) return;
+      const step = p.steps.find(s => s.id === stepId);
+      if (!step) return;
+      step.materials.push({ code: '', name: '새 원재료', stdKg: 0, tolerancePct: 1.0, specQty: '', caution: '', location: '', matBomVersion: '', inputMethod: '', isPigment: false });
+      renderBomDetail();
+    }
+    function deleteBomMaterialRow(stepId, matIdx) {
+      const p = getSelectedProduct();
+      if (!p) return;
+      const step = p.steps.find(s => s.id === stepId);
+      if (!step) return;
+      if (!confirm('이 원재료를 BOM에서 삭제하시겠습니까?')) return;
+      step.materials.splice(matIdx, 1);
+      renderBomDetail();
+    }
+    async function saveBomEditsToSupabase() {
+      const p = getSelectedProduct();
+      if (!p) { alert('먼저 BOM 검색 결과에서 제품을 선택해주세요.'); return; }
+      const result = await upsertBomProductsToSupabase([p]);
+      renderBomSearchResults();
+      if (result.ok) {
+        alert(`"${p.name}" BOM 수정사항이 Supabase에 저장되었습니다.`);
+      } else if (result.skipped) {
+        alert('Supabase가 연결되어 있지 않아 이 브라우저에만 임시로 반영되었습니다. 새로고침하면 사라질 수 있습니다.');
+      }
+    }
+
+    // ==========================================================================
+    // 원재료·부재료 품목 마스터 (거래처 매핑용) — localStorage 저장
+    // ==========================================================================
+    const VENDOR_MASTER_STORAGE_KEY = 'topseal_vendor_master_v1';
+    function loadVendorMasterFromStorage() {
+      try {
+        const raw = localStorage.getItem(VENDOR_MASTER_STORAGE_KEY);
+        if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) state.vendorMaster = parsed; }
+      } catch (e) { console.error('vendor master load failed', e); }
+    }
+    function saveVendorMasterToStorage() {
+      try { localStorage.setItem(VENDOR_MASTER_STORAGE_KEY, JSON.stringify(state.vendorMaster)); }
+      catch (e) { console.error('vendor master save failed', e); }
+    }
+    function normalizeKey(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ''); }
+    // 품목코드 우선, 없으면 품목명으로 거래처 매핑
+    function lookupVendor(code, name) {
+      const nCode = normalizeKey(code);
+      const nName = normalizeKey(name);
+      if (nCode) {
+        const byCode = state.vendorMaster.find(v => normalizeKey(v.code) === nCode);
+        if (byCode) return byCode.vendor || '';
+      }
+      if (nName) {
+        const byName = state.vendorMaster.find(v => normalizeKey(v.name) === nName);
+        if (byName) return byName.vendor || '';
+      }
+      return '';
+    }
+    function renderVendorMaster() {
+      const tbody = document.getElementById('vendor-master-tbody');
+      const countEl = document.getElementById('vendor-master-count');
+      if (!tbody) return;
+      countEl.textContent = state.vendorMaster.length;
+      if (state.vendorMaster.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="py-4 px-3 text-center text-slate-500">등록된 품목이 없습니다. 위에서 파일을 업로드하거나 직접 추가해주세요.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = state.vendorMaster.map((v, idx) => `
+        <tr class="hover:bg-slate-800/60">
+          <td class="py-2 px-3 font-mono text-indigo-300">${v.code || ''}</td>
+          <td class="py-2 px-3 text-white">${v.name || ''}</td>
+          <td class="py-2 px-3 text-emerald-300">${v.vendor || ''}</td>
+          <td class="py-2 px-3 text-center"><button onclick="deleteVendorMasterRow(${idx})" class="text-rose-400 hover:text-rose-300"><i class="fa-solid fa-trash"></i></button></td>
+        </tr>
+      `).join('');
+    }
+    function addVendorMasterRow() {
+      const code = document.getElementById('vendor-add-code').value.trim();
+      const name = document.getElementById('vendor-add-name').value.trim();
+      const vendor = document.getElementById('vendor-add-vendor').value.trim();
+      if (!name) { alert('품목명은 필수입니다.'); return; }
+      state.vendorMaster.push({ code, name, vendor });
+      saveVendorMasterToStorage();
+      renderVendorMaster();
+      document.getElementById('vendor-add-code').value = '';
+      document.getElementById('vendor-add-name').value = '';
+      document.getElementById('vendor-add-vendor').value = '';
+    }
+    function deleteVendorMasterRow(idx) {
+      state.vendorMaster.splice(idx, 1);
+      saveVendorMasterToStorage();
+      renderVendorMaster();
+    }
+    function clearVendorMaster() {
+      if (!confirm('등록된 품목 마스터를 전체 삭제하시겠습니까?')) return;
+      state.vendorMaster = [];
+      saveVendorMasterToStorage();
+      renderVendorMaster();
+    }
+    function downloadVendorMasterTemplateCsv() {
+      const csv = '\uFEFF' + '품목코드,품목명,거래처명\nR_POLY5_009,5만TANK,OO상사\nR_PLAST_021,5004TANK(Extender),XX케미칼\n';
+      downloadTextFile('원재료_부재료_마스터_업로드양식.csv', csv);
+    }
+    function handleVendorMasterUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const isXlsx = /\.xlsx$/i.test(file.name);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          let added = 0;
+          if (isXlsx) {
+            const wb = new ExcelJS.Workbook();
+            wb.xlsx.load(e.target.result).then(() => {
+              const ws = wb.worksheets[0];
+              ws.eachRow((row, rowNumber) => {
+                if (rowNumber === 1) return; // header
+                const code = String(row.getCell(1).value || '').trim();
+                const name = String(row.getCell(2).value || '').trim();
+                const vendor = String(row.getCell(3).value || '').trim();
+                if (name) { state.vendorMaster.push({ code, name, vendor }); added++; }
+              });
+              saveVendorMasterToStorage();
+              renderVendorMaster();
+              alert(`품목 마스터 ${added}건을 추가했습니다.`);
+            });
+          } else {
+            const rows = parseCsvSmart(e.target.result);
+            rows.forEach((cols, i) => {
+              if (i === 0 && /품목코드|code/i.test(cols[0] || '')) return; // header row
+              const [code, name, vendor] = cols;
+              if (name && name.trim()) { state.vendorMaster.push({ code: (code || '').trim(), name: name.trim(), vendor: (vendor || '').trim() }); added++; }
+            });
+            saveVendorMasterToStorage();
+            renderVendorMaster();
+            alert(`품목 마스터 ${added}건을 추가했습니다.`);
+          }
+        } catch (err) {
+          console.error(err);
+          alert('업로드 처리 중 오류가 발생했습니다: ' + err.message);
+        }
+      };
+      if (isXlsx) reader.readAsArrayBuffer(file); else reader.readAsText(file, 'UTF-8');
+      event.target.value = '';
+    }
+
+    // ==========================================================================
+    // BOM 장바구니 & 원재료 소모량 통합 조회
+    // ==========================================================================
+    function addCurrentBomToCart() {
+      const p = getSelectedProduct();
+      if (!p) { alert('먼저 BOM 검색 결과에서 제품을 선택해주세요.'); return; }
+      const targetQty = parseFloat(document.getElementById('bom-target-qty-input').value) || (p.basisQty || 1);
+      const flatMats = flattenBomMaterials(p);
+      if (flatMats.length === 0) { alert('이 BOM에는 계량된 원재료가 없습니다.'); return; }
+      const materials = flatMats.map(m => ({
+        code: m.code || '',
+        name: m.name || '(이름없음)',
+        qty: bomMaterialBounds(m).applied
+      }));
+      const batchSizeKg = materials.reduce((a, m) => a + m.qty, 0);
+      state.cart.push({
+        id: `cart_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+        productKey: productKey(p),
+        productCode: p.code || '',
+        productName: p.name || '',
+        bomVersion: p.bomVersion || '',
+        targetQty,
+        batchSizeKg,
+        materials,
+        addedAt: new Date().toISOString()
+      });
+      updateCartBadge();
+      alert(`"${p.name}" (목표수량 ${fmt(targetQty,0)}, Batch Size ${fmt(batchSizeKg,2)}kg)을 장바구니에 담았습니다.`);
+    }
+    function removeCartItem(id) {
+      state.cart = state.cart.filter(c => c.id !== id);
+      updateCartBadge();
+      renderCart();
+    }
+    function clearCart() {
+      if (state.cart.length === 0) return;
+      if (!confirm('장바구니를 비우시겠습니까?')) return;
+      state.cart = [];
+      updateCartBadge();
+      renderCart();
+    }
+    function updateCartBadge() {
+      const badge = document.getElementById('cart-badge-count');
+      if (!badge) return;
+      if (state.cart.length > 0) { badge.textContent = state.cart.length; badge.classList.remove('hidden'); }
+      else { badge.classList.add('hidden'); }
+    }
+    // 장바구니 전체 품목을 code(없으면 name) 기준으로 합산 + 거래처 매핑
+    function aggregateCartMaterials() {
+      const merged = {};
+      const order = [];
+      state.cart.forEach(item => {
+        item.materials.forEach(m => {
+          const key = (m.code && m.code.trim()) ? ('C:' + normalizeKey(m.code)) : ('N:' + normalizeKey(m.name));
+          if (!merged[key]) { merged[key] = { code: m.code || '', name: m.name, qty: 0 }; order.push(key); }
+          merged[key].qty += m.qty;
+        });
+      });
+      return order.map(k => {
+        const r = merged[k];
+        return { ...r, vendor: lookupVendor(r.code, r.name) };
+      });
+    }
+    function renderCart() {
+      const listEl = document.getElementById('cart-items-list');
+      const matTbody = document.getElementById('cart-materials-tbody');
+      const vendorBox = document.getElementById('cart-vendor-summary');
+      if (!listEl) return;
+
+      if (state.cart.length === 0) {
+        listEl.innerHTML = '<div class="text-xs text-slate-500 py-6 text-center">장바구니가 비어있습니다. BOM 검색 탭에서 제품을 선택하고 "장바구니에 추가"를 눌러주세요.</div>';
+      } else {
+        listEl.innerHTML = state.cart.map(item => `
+          <div class="flex items-center justify-between gap-3 bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-2.5">
+            <div>
+              <span class="font-bold text-sm text-white">${item.productName}</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 ml-1.5">${item.productCode || '-'}</span>
+              ${item.bomVersion ? `<span class="text-[11px] text-amber-300/80 ml-1.5">${item.bomVersion}</span>` : ''}
+              <div class="text-[11px] text-slate-400 mt-0.5">목표수량 ${fmt(item.targetQty,0)} · Batch Size ${fmt(item.batchSizeKg,2)} kg · 원재료 ${item.materials.length}종</div>
+            </div>
+            <button onclick="removeCartItem('${item.id}')" class="text-rose-400 hover:text-rose-300 px-2"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        `).join('');
+      }
+
+      const agg = aggregateCartMaterials();
+      if (matTbody) {
+        if (agg.length === 0) {
+          matTbody.innerHTML = '<tr><td colspan="4" class="py-4 px-3 text-center text-slate-500">장바구니에 담긴 항목이 없습니다.</td></tr>';
+        } else {
+          matTbody.innerHTML = agg.map(r => `
+            <tr class="hover:bg-slate-800/60">
+              <td class="py-2 px-3 font-mono text-indigo-300">${r.code || '-'}</td>
+              <td class="py-2 px-3 text-white">${r.name}</td>
+              <td class="py-2 px-3 text-right font-mono text-emerald-300">${fmt(r.qty, 2)}</td>
+              <td class="py-2 px-3">${r.vendor ? `<span class="text-cyan-300">${r.vendor}</span>` : '<span class="text-slate-600">미매핑</span>'}</td>
+            </tr>
+          `).join('');
+        }
+      }
+
+      if (vendorBox) {
+        const byVendor = {};
+        agg.forEach(r => {
+          const key = r.vendor || '(거래처 미매핑)';
+          if (!byVendor[key]) byVendor[key] = [];
+          byVendor[key].push(r);
+        });
+        const vendorKeys = Object.keys(byVendor).sort((a, b) => a === '(거래처 미매핑)' ? 1 : b === '(거래처 미매핑)' ? -1 : a.localeCompare(b));
+        if (vendorKeys.length === 0) {
+          vendorBox.innerHTML = '<div class="text-xs text-slate-500 py-3 text-center">장바구니에 담긴 항목이 없습니다.</div>';
+        } else {
+          vendorBox.innerHTML = vendorKeys.map(vk => {
+            const items = byVendor[vk];
+            const totalQty = items.reduce((a, r) => a + r.qty, 0);
+            return `
+              <div class="bg-slate-900/70 border border-slate-700 rounded-lg p-3">
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="font-bold text-sm ${vk === '(거래처 미매핑)' ? 'text-slate-500' : 'text-cyan-300'}">${vk}</span>
+                  <span class="text-[11px] text-slate-400">${items.length}품목 · 합계 ${fmt(totalQty, 2)} kg</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${items.map(r => `<span class="text-[10px] bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-300">${r.name} (${fmt(r.qty,2)}kg)</span>`).join('')}
+                </div>
+              </div>`;
+          }).join('');
+        }
+      }
+    }
+    function downloadCartMaterialsCsv() {
+      const agg = aggregateCartMaterials();
+      if (agg.length === 0) { alert('장바구니가 비어있습니다.'); return; }
+      let csv = '품목코드,품목명,수량(kg),거래처명\n';
+      agg.forEach(r => {
+        csv += [csvField(r.code || ''), csvField(r.name), csvNum(r.qty), csvField(r.vendor || '미매핑')].join(',') + '\n';
+      });
+      downloadTextFile(`BOM_장바구니_원재료소모량_${new Date().toISOString().slice(0,10)}.csv`, '\uFEFF' + csv);
+    }
+
 
     function onBomMatFieldChange(stepId, matIdx, field, value) {
       const p = getSelectedProduct();
@@ -2204,34 +2412,6 @@
       if (!step) return;
       step.materials[matIdx][field] = value;
       renderBomDetail();
-    }
-
-    function addBomMaterial(stepId) {
-      const p = getSelectedProduct();
-      if (!p) return;
-      const step = p.steps.find(s => s.id === stepId);
-      if (!step) return;
-      step.materials.push({ code: '', name: '신규 원재료', stdKg: 0, tolerancePct: 1.0, specQty: '', caution: '', inputMethod: '', isPigment: false });
-      renderBomDetail();
-    }
-
-    function deleteBomMaterial(stepId, matIdx) {
-      const p = getSelectedProduct();
-      if (!p) return;
-      const step = p.steps.find(s => s.id === stepId);
-      if (!step) return;
-      const mat = step.materials[matIdx];
-      if (!confirm(`"${mat.name || '이름없음'}" 원재료를 삭제하시겠습니까?`)) return;
-      step.materials.splice(matIdx, 1);
-      renderBomDetail();
-    }
-
-    async function saveCurrentBomToDb() {
-      const p = getSelectedProduct();
-      if (!p) { alert('먼저 BOM 검색 결과에서 제품을 선택해주세요.'); return; }
-      if (!TOPSEAL_SUPABASE) { alert('Supabase가 연결되어 있지 않아 브라우저에만 반영된 상태입니다(새로고침 시 편집 내용이 초기화될 수 있음).'); return; }
-      const result = await upsertBomProductsToSupabase([p]);
-      if (result.ok) { alert(`"${p.name}" BOM 편집 내용을 DB에 저장했습니다.`); renderBomSearchResults(); }
     }
 
     // --- MES 업로드 → ECOUNT 변환 (중복 원재료 합산) ---
@@ -2317,8 +2497,7 @@
               caution: cNote !== -1 ? (r[cNote] || '') : '',
               location: cLocation !== -1 ? (r[cLocation] || '') : '',
               matBomVersion: cMatBomVer !== -1 ? (r[cMatBomVer] || '') : '',
-              inputMethod: '',
-              isPigment: false
+              inputMethod: ''
             });
           }
 
@@ -2538,8 +2717,6 @@
     const BATCHMAPPING_KEY = 'topseal_batch_sheet_mapping_v1';
     let batchTemplates = JSON.parse(localStorage.getItem(BATCHMASTER_KEY) || '[]');
     let batchMappings = JSON.parse(localStorage.getItem(BATCHMAPPING_KEY) || '{}');
-    // 하위호환: 예전 버전에서 template.mapping 필드가 없던 데이터 보정
-    batchTemplates.forEach(t => { if (!t.mapping) t.mapping = {}; });
 
     function saveBatchStores() {
       localStorage.setItem(BATCHMASTER_KEY, JSON.stringify(batchTemplates));
@@ -2550,26 +2727,14 @@
       const box = document.getElementById('batchmaster-list');
       if (!box) return;
       if (!batchTemplates.length) {
-        box.innerHTML = '<div class="p-4 rounded-lg border border-dashed border-slate-700 text-center text-xs text-slate-500">등록된 표준 Batch Sheet Template이 없습니다. 현장에서 사용하는 표준 Batch Sheet Excel(.xlsx)을 업로드하세요.</div>';
+        box.innerHTML = '<div class="p-4 rounded-lg border border-dashed border-slate-700 text-center text-xs text-slate-500">등록된 Base Sheet가 없습니다. 첫 번째 Base로 O-200 오크 Excel을 추가하세요.</div>';
         return;
       }
-      box.innerHTML = batchTemplates.map((t,i) => {
-        const mappedCount = Object.keys(t.mapping||{}).length;
-        return `
-        <div class="p-3 rounded-lg border border-slate-700 bg-slate-900/70 flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <div class="text-sm font-bold text-white">${esc(t.name)}</div>
-            <div class="text-[11px] text-slate-400">${esc(t.baseBomId || '-')} · ${t.sheetNames.length}개 Worksheet · ${esc(t.fileName)} ·
-              <span class="${mappedCount ? 'text-emerald-400' : 'text-amber-400'}">셀 매핑 완료 ${mappedCount}/${t.sheetNames.length} 시트</span>
-            </div>
-          </div>
-          <div class="flex gap-1.5">
-            <button onclick="openMappingEditor('${t.id}')" class="px-2.5 py-1.5 rounded bg-amber-700/70 hover:bg-amber-600 text-[11px] text-white font-bold"><i class="fa-solid fa-arrow-pointer mr-1"></i>셀 매핑</button>
-            <button onclick="cloneBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-slate-700 text-[11px] text-white">복제</button>
-            <button onclick="deleteBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-rose-900/60 text-[11px] text-rose-200">삭제</button>
-          </div>
-        </div>`;
-      }).join('');
+      box.innerHTML = batchTemplates.map((t,i) => `
+        <div class="p-3 rounded-lg border border-slate-700 bg-slate-900/70 flex items-center justify-between gap-3">
+          <div><div class="text-sm font-bold text-white">${esc(t.name)}</div><div class="text-[11px] text-slate-400">${esc(t.baseBomId || '-')} · ${t.sheetNames.length}개 Worksheet · ${esc(t.fileName)}</div></div>
+          <div class="flex gap-1.5"><button onclick="cloneBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-slate-700 text-[11px] text-white">복제</button><button onclick="deleteBatchTemplate(${i})" class="px-2.5 py-1.5 rounded bg-rose-900/60 text-[11px] text-rose-200">삭제</button></div>
+        </div>`).join('');
     }
 
     async function handleBaseExcelUpload(event) {
@@ -2580,28 +2745,28 @@
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buffer);
         const sheetNames = wb.worksheets.map(ws => ws.name);
-        const baseBomId = prompt('이 표준 Batch Sheet가 연결될 baseBomId(선택, 비워도 됨)를 입력하세요.', '');
+        const baseBomId = prompt('이 Base Sheet가 연결될 baseBomId를 입력하세요.', 'B_O200B_046');
         if (baseBomId === null) return;
-        const name = prompt('표준 Batch Sheet 이름을 입력하세요.', file.name.replace(/\.xlsx$/i,'')) || file.name;
+        const name = prompt('Base Sheet 이름을 입력하세요.', file.name.replace(/\.xlsx$/i,'')) || file.name;
         const id = 'BS_' + Date.now();
-        batchTemplates.push({id,name,baseBomId:baseBomId.trim(),fileName:file.name,sheetNames,buffer:Array.from(new Uint8Array(buffer)),mapping:{}});
+        batchTemplates.push({id,name,baseBomId:baseBomId.trim(),fileName:file.name,sheetNames,buffer:Array.from(new Uint8Array(buffer))});
         saveBatchStores(); renderBatchMaster(); renderBatchMappingProducts();
-        document.getElementById('bm-status').textContent = `표준 Batch Sheet 등록 완료: ${name}. 이어서 [셀 매핑]으로 값이 들어갈 위치를 지정하세요.`;
-      } catch (e) { alert('Excel 파일을 읽지 못했습니다(손상된 Excel Template일 수 있습니다): ' + e.message); }
+        document.getElementById('bm-status').textContent = `Base Sheet 등록 완료: ${name}`;
+      } catch (e) { alert('Excel 파일을 읽지 못했습니다: ' + e.message); }
       event.target.value='';
     }
 
     function cloneBatchTemplate(i) {
       const t = batchTemplates[i]; if (!t) return;
-      const name = prompt('복제할 Template 이름', t.name + ' 복제본'); if (!name) return;
+      const name = prompt('복제할 Base Sheet 이름', t.name + ' 복제본'); if (!name) return;
       const id='BS_'+Date.now();
-      batchTemplates.push({...t,id,name,buffer:[...t.buffer],sheetNames:[...t.sheetNames],mapping:JSON.parse(JSON.stringify(t.mapping||{}))}); saveBatchStores(); renderBatchMaster();
+      batchTemplates.push({...t,id,name,buffer:[...t.buffer],sheetNames:[...t.sheetNames]}); saveBatchStores(); renderBatchMaster();
     }
     function deleteBatchTemplate(i) {
       const t=batchTemplates[i]; if(!t) return;
       const refs=Object.values(batchMappings).filter(m=>m.baseSheetId===t.id).length;
-      if(refs && !confirm(`현재 ${refs}개 품목이 사용 중입니다. 그래도 삭제하시겠습니까?`)) return;
-      if(!refs && !confirm('이 Template을 삭제하시겠습니까?')) return;
+      if(refs && !confirm(`현재 ${refs}개 제품이 사용 중입니다. 그래도 삭제하시겠습니까?`)) return;
+      if(!refs && !confirm('이 Base Sheet를 삭제하시겠습니까?')) return;
       batchTemplates.splice(i,1); saveBatchStores(); renderBatchMaster(); renderBatchMappingProducts();
     }
 
@@ -2609,7 +2774,7 @@
       const sel=document.getElementById('bm-product-select'); if(!sel) return;
       const q=(document.getElementById('bm-product-search')?.value||'').trim().toLowerCase();
       const arr=(state.productDb||[]).filter(p=>!q || `${p.name||''} ${p.code||''}`.toLowerCase().includes(q));
-      sel.innerHTML='<option value="">품목을 선택하세요</option>'+arr.slice(0,200).map(p=>`<option value="${esc(productKey(p))}">${esc(p.name)} · ${esc(p.code||'-')}</option>`).join('');
+      sel.innerHTML='<option value="">제품을 선택하세요</option>'+arr.slice(0,200).map(p=>`<option value="${esc(productKey(p))}">${esc(p.name)} · ${esc(p.code||'-')}</option>`).join('');
       const current=state.selectedProductKey; if(current && arr.some(p=>productKey(p)===current)) sel.value=current;
     }
 
@@ -2620,285 +2785,73 @@
       const baseCandidates=batchTemplates.filter(t=>!p?.baseBomId || t.baseBomId===p.baseBomId);
       const baseSel=document.getElementById('bm-base-select'); baseSel.innerHTML=baseCandidates.map(t=>`<option value="${t.id}">${esc(t.name)} · ${esc(t.baseBomId||'')}</option>`).join('');
       if(m.baseSheetId && baseCandidates.some(t=>t.id===m.baseSheetId)) baseSel.value=m.baseSheetId;
-      onBmBaseSelectChange();
-      if(m.sheetName){ const ss=document.getElementById('bm-sheet-select'); if([...ss.options].some(o=>o.value===m.sheetName)) ss.value=m.sheetName; }
+      const t=baseCandidates.find(x=>x.id===baseSel.value); const sheets=t?.sheetNames||[];
+      document.getElementById('bm-sheet-select').innerHTML=sheets.map(n=>`<option>${esc(n)}</option>`).join('');
+      if(m.sheetName && sheets.includes(m.sheetName)) document.getElementById('bm-sheet-select').value=m.sheetName;
+      document.getElementById('bm-pigment-code-cell').value=m.pigmentCodeCell||'B17';
+      document.getElementById('bm-pigment-name-cell').value=m.pigmentNameCell||'C17';
+      document.getElementById('bm-pigment-qty-cell').value=m.pigmentQtyCell||'D17';
     }
-    function onBmBaseSelectChange(){
+    document.getElementById('bm-base-select')?.addEventListener('change',()=>{
       const t=batchTemplates.find(x=>x.id===document.getElementById('bm-base-select').value); const ss=document.getElementById('bm-sheet-select');
-      ss.innerHTML=(t?.sheetNames||[]).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
-    }
+      ss.innerHTML=(t?.sheetNames||[]).map(n=>`<option>${esc(n)}</option>`).join('');
+    });
     function saveBatchMapping(){
       const key=document.getElementById('bm-product-select').value; if(!key) return;
-      batchMappings[key]={baseSheetId:document.getElementById('bm-base-select').value,sheetName:document.getElementById('bm-sheet-select').value};
-      saveBatchStores(); document.getElementById('bm-status').textContent='품목 ↔ Template 연결을 저장했습니다.';
+      batchMappings[key]={baseSheetId:document.getElementById('bm-base-select').value,sheetName:document.getElementById('bm-sheet-select').value,pigmentCodeCell:document.getElementById('bm-pigment-code-cell').value.trim().toUpperCase(),pigmentNameCell:document.getElementById('bm-pigment-name-cell').value.trim().toUpperCase(),pigmentQtyCell:document.getElementById('bm-pigment-qty-cell').value.trim().toUpperCase()};
+      saveBatchStores(); document.getElementById('bm-status').textContent='제품별 Batch Sheet 매핑을 저장했습니다.';
     }
     function clearBatchMapping(){const key=document.getElementById('bm-product-select').value;if(!key)return;delete batchMappings[key];saveBatchStores();loadBatchMappingEditor();}
-    function openMappingEditorForCurrentSelection(){
-      const tid=document.getElementById('bm-base-select').value; const sheetName=document.getElementById('bm-sheet-select').value;
-      if(!tid){alert('먼저 연결할 Template을 선택하세요.');return;}
-      openMappingEditor(tid, sheetName);
-    }
 
-    // ----- 셀 매핑 유틸 (Excel 주소 <-> 행/열 변환) -----
-    function colIdxToLetter(n){let s='';while(n>0){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s||'A';}
-    function colLetterToIdx(letters){let n=0;for(const ch of String(letters||'').toUpperCase()){if(ch<'A'||ch>'Z')continue;n=n*26+(ch.charCodeAt(0)-64);}return n||1;}
-    function parseCellAddr(addr){const m=/^([A-Za-z]+)(\d+)$/.exec(String(addr||'').trim());if(!m)return null;return{col:colLetterToIdx(m[1]),row:parseInt(m[2],10)};}
-    function computeMergeInfo(ws){
-      const merges=(ws.model && ws.model.merges)||[]; const mainSpan={}; const skip=new Set();
-      merges.forEach(rangeStr=>{
-        const parts=String(rangeStr).split(':'); if(parts.length!==2) return;
-        const pa=parseCellAddr(parts[0]), pb=parseCellAddr(parts[1]); if(!pa||!pb) return;
-        const r1=Math.min(pa.row,pb.row), r2=Math.max(pa.row,pb.row), c1=Math.min(pa.col,pb.col), c2=Math.max(pa.col,pb.col);
-        mainSpan[`${r1}_${c1}`]={rowspan:r2-r1+1,colspan:c2-c1+1};
-        for(let r=r1;r<=r2;r++) for(let c=c1;c<=c2;c++){ if(r===r1&&c===c1) continue; skip.add(`${r}_${c}`); }
-      });
-      return {mainSpan, skip};
+    function normalizeMaterialKey(v){return String(v||'').toLowerCase().replace(/[\s\-_().,/]/g,'').replace(/㎏|kg/g,'');}
+    function getProductPigment(p){
+      const mats=[]; (p?.steps||[]).forEach(s=>(s.materials||[]).forEach(m=>{if(m.isPigment || /색소|안료|pigment/i.test(m.name||'')) mats.push(m);}));
+      return mats.sort((a,b)=>(b.stdKg||0)-(a.stdKg||0))[0]||null;
     }
-    function cellDisplayValue(cell){
-      let v=cell.value;
-      if(v && typeof v==='object'){
-        if(Array.isArray(v.richText)) v=v.richText.map(t=>t.text).join('');
-        else if(v.result!=null) v=v.result;
-        else if(v.text!=null) v=v.text;
-        else if(v.formula!=null) v='='+v.formula;
-        else v='';
-      }
-      return v==null? '' : String(v);
+    function findMaterialRow(ws, mat){
+      const code=normalizeMaterialKey(mat.code), name=normalizeMaterialKey(mat.name);
+      for(let r=1;r<=ws.rowCount;r++){const rc=normalizeMaterialKey(ws.getCell(r,2).value), rn=normalizeMaterialKey(ws.getCell(r,3).value);if(code&&rc&&code===rc)return r;if(name&&rn&&name===rn)return r;}
+      return null;
     }
-
-    // ----- Mapping 항목 정의 (수기 셀 주소 입력 없이, Preview 클릭으로만 지정) -----
-    const MAPPING_FIELDS = [
-      {key:'itemCode', label:'품목코드', kind:'cell'},
-      {key:'itemName', label:'품목명', kind:'cell'},
-      {key:'batchSize', label:'Batch Size', kind:'cell'},
-      {key:'materialStartRow', label:'원재료 시작 행', kind:'row'},
-      {key:'materialCodeCol', label:'원재료코드 열', kind:'col'},
-      {key:'materialNameCol', label:'원재료명 열', kind:'col'},
-      {key:'materialQtyCol', label:'표준투입량 열', kind:'col'},
-      {key:'materialSgCol', label:'비중값 열', kind:'col', optional:true}
-    ];
-    const REQUIRED_MAPPING_KEYS = ['materialStartRow','materialCodeCol','materialNameCol','materialQtyCol'];
-
-    let mappingState = { templateId:null, sheetName:null, workbook:null, draft:{}, armedField:null };
-
-    function openMappingEditor(templateId, sheetName){
-      const t=batchTemplates.find(x=>x.id===templateId); if(!t){alert('Template을 찾을 수 없습니다.');return;}
-      document.getElementById('mapping-modal-title').textContent='· '+t.name;
-      const sheetSel=document.getElementById('mapping-sheet-select');
-      sheetSel.innerHTML=t.sheetNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
-      const initialSheet = (sheetName && t.sheetNames.includes(sheetName)) ? sheetName : t.sheetNames[0];
-      sheetSel.value=initialSheet;
-      mappingState.templateId=templateId;
-      mappingState.sheetName=initialSheet;
-      mappingState.draft={ ...((t.mapping||{})[initialSheet] || {}) };
-      mappingState.armedField=MAPPING_FIELDS.find(f=>!mappingState.draft[f.key])?.key || MAPPING_FIELDS[0].key;
-      document.getElementById('mapping-selected-cell').textContent='-';
-      document.getElementById('mapping-validation-msg').textContent='';
-      const modal=document.getElementById('mapping-modal'); modal.classList.remove('hidden'); modal.classList.add('flex');
-      const panel=document.getElementById('mapping-preview-panel'); panel.innerHTML='<div class="text-xs text-slate-500">Template Excel을 불러오는 중...</div>';
-      const wb=new ExcelJS.Workbook();
-      wb.xlsx.load(new Uint8Array(t.buffer)).then(()=>{
-        mappingState.workbook=wb;
-        renderMappingItemsPanel();
-        renderMappingPreview();
-      }).catch(e=>{ panel.innerHTML=`<div class="text-xs text-rose-400">Template을 불러오지 못했습니다: ${esc(e.message)}</div>`; });
-    }
-    function onMappingSheetChange(){
-      const t=batchTemplates.find(x=>x.id===mappingState.templateId); if(!t) return;
-      const sheetName=document.getElementById('mapping-sheet-select').value;
-      mappingState.sheetName=sheetName;
-      mappingState.draft={ ...((t.mapping||{})[sheetName] || {}) };
-      mappingState.armedField=MAPPING_FIELDS.find(f=>!mappingState.draft[f.key])?.key || MAPPING_FIELDS[0].key;
-      document.getElementById('mapping-selected-cell').textContent='-';
-      document.getElementById('mapping-validation-msg').textContent='';
-      renderMappingItemsPanel();
-      renderMappingPreview();
-    }
-    function closeMappingEditor(){
-      const modal=document.getElementById('mapping-modal'); modal.classList.add('hidden'); modal.classList.remove('flex');
-      mappingState={ templateId:null, sheetName:null, workbook:null, draft:{}, armedField:null };
-    }
-    function armMappingField(key){ mappingState.armedField=key; renderMappingItemsPanel(); }
-
-    function renderMappingItemsPanel(){
-      const panel=document.getElementById('mapping-items-panel'); if(!panel) return;
-      panel.innerHTML = MAPPING_FIELDS.map(f=>{
-        const val=mappingState.draft[f.key]; const armed=mappingState.armedField===f.key;
-        return `<button onclick="armMappingField('${f.key}')" class="w-full text-left px-3 py-2.5 rounded-lg border text-xs transition ${armed?'border-amber-400 bg-amber-500/10':'border-slate-700 bg-slate-800/60 hover:border-slate-500'}">
-          <div class="flex items-center justify-between gap-2">
-            <span class="font-bold ${armed?'text-amber-200':'text-slate-300'}">${esc(f.label)}${f.optional?' <span class="text-slate-500 font-normal">(선택)</span>':''}</span>
-            ${val!=null && val!=='' ? `<span class="font-mono text-emerald-400">${esc(String(val))}</span>` : '<span class="text-slate-500">미지정</span>'}
-          </div>
-        </button>`;
-      }).join('');
-      const armedField=MAPPING_FIELDS.find(f=>f.key===mappingState.armedField);
-      document.getElementById('mapping-armed-item').textContent = armedField ? armedField.label : '-';
-    }
-
-    function mappingAssignedLabelFor(addr,r,c){
-      const labels=[];
-      MAPPING_FIELDS.forEach(f=>{
-        const v=mappingState.draft[f.key]; if(v==null||v==='') return;
-        if(f.kind==='cell' && v===addr) labels.push(f.label);
-        else if(f.kind==='row' && Number(v)===r && c===1) labels.push(f.label);
-        else if(f.kind==='col'){
-          const startRow=mappingState.draft.materialStartRow;
-          if(startRow && r===Number(startRow) && String(v).toUpperCase()===colIdxToLetter(c)) labels.push(f.label);
-        }
-      });
-      return labels.join(', ');
-    }
-
-    function renderMappingPreview(){
-      const panel=document.getElementById('mapping-preview-panel'); if(!panel) return;
-      if(!mappingState.workbook){ panel.innerHTML='<div class="text-xs text-slate-500">Template을 불러오는 중...</div>'; return; }
-      const ws=mappingState.workbook.getWorksheet(mappingState.sheetName);
-      if(!ws){ panel.innerHTML='<div class="text-xs text-rose-400">지원하지 않는 Excel 구조이거나 Worksheet를 찾을 수 없습니다.</div>'; return; }
-      const {mainSpan, skip}=computeMergeInfo(ws);
-      const maxRow=Math.min(ws.rowCount||1, 250);
-      const maxCol=Math.min(ws.columnCount||1, 30);
-      let html='<table class="mapping-preview-table"><tr><th class="sticky-corner"></th>';
-      for(let c=1;c<=maxCol;c++) html+=`<th class="col-head">${colIdxToLetter(c)}</th>`;
-      html+='</tr>';
-      for(let r=1;r<=maxRow;r++){
-        html+=`<tr><th class="row-head">${r}</th>`;
-        for(let c=1;c<=maxCol;c++){
-          const key=`${r}_${c}`; if(skip.has(key)) continue;
-          const span=mainSpan[key]; const rowspan=span?span.rowspan:1, colspan=span?span.colspan:1;
-          const cell=ws.getCell(r,c); const display=cellDisplayValue(cell).slice(0,40);
-          const addr=colIdxToLetter(c)+r; const label=mappingAssignedLabelFor(addr,r,c);
-          html+=`<td class="mp-cell${label?' mp-assigned':''}" rowspan="${rowspan}" colspan="${colspan}" onclick="onMappingCellClick(${r},${c})" title="${esc(addr)}">${esc(display)}${label?`<div class="mp-badge">${esc(label)}</div>`:''}</td>`;
-        }
-        html+='</tr>';
-      }
-      html+='</table>';
-      panel.innerHTML=html;
-    }
-
-    function onMappingCellClick(r,c){
-      const key=mappingState.armedField;
-      const addr=colIdxToLetter(c)+r;
-      if(!key){ document.getElementById('mapping-selected-cell').textContent=addr+' (왼쪽에서 매핑 항목을 먼저 선택하세요)'; return; }
-      const field=MAPPING_FIELDS.find(f=>f.key===key); if(!field) return;
-      if(field.kind==='row') mappingState.draft[key]=r;
-      else if(field.kind==='col') mappingState.draft[key]=colIdxToLetter(c);
-      else mappingState.draft[key]=addr;
-      document.getElementById('mapping-selected-cell').textContent=addr;
-      document.getElementById('mapping-validation-msg').textContent='';
-      const idx=MAPPING_FIELDS.findIndex(f=>f.key===key);
-      const next=MAPPING_FIELDS.slice(idx+1).find(f=>!mappingState.draft[f.key]) || MAPPING_FIELDS.find(f=>!mappingState.draft[f.key]);
-      mappingState.armedField = next ? next.key : null;
-      renderMappingItemsPanel();
-      renderMappingPreview();
-    }
-
-    function resetCurrentMapping(){
-      if(!confirm('현재 편집 중인 매핑을 초기화하시겠습니까?')) return;
-      mappingState.draft={}; mappingState.armedField=MAPPING_FIELDS[0].key;
-      document.getElementById('mapping-selected-cell').textContent='-';
-      document.getElementById('mapping-validation-msg').textContent='';
-      renderMappingItemsPanel(); renderMappingPreview();
-    }
-
-    function saveMappingFromModal(){
-      const msgEl=document.getElementById('mapping-validation-msg');
-      const missing=REQUIRED_MAPPING_KEYS.filter(k=>mappingState.draft[k]==null || mappingState.draft[k]==='');
-      if(missing.length){ msgEl.textContent='필수 항목 미지정: '+missing.map(k=>MAPPING_FIELDS.find(f=>f.key===k).label).join(', '); return; }
-      const cellAddrCounts={};
-      MAPPING_FIELDS.filter(f=>f.kind==='cell').forEach(f=>{ const v=mappingState.draft[f.key]; if(v) cellAddrCounts[v]=(cellAddrCounts[v]||0)+1; });
-      const dup=Object.keys(cellAddrCounts).find(k=>cellAddrCounts[k]>1);
-      if(dup){ msgEl.textContent=`동일 셀(${dup})에 여러 항목이 매핑되었습니다. 각 항목은 서로 다른 셀을 사용해야 합니다.`; return; }
-      const t=batchTemplates.find(x=>x.id===mappingState.templateId); if(!t){ msgEl.textContent='Template을 찾을 수 없습니다.'; return; }
-      t.mapping=t.mapping||{};
-      t.mapping[mappingState.sheetName]={...mappingState.draft};
-      saveBatchStores();
-      document.getElementById('bm-status').textContent=`"${t.name}" · ${mappingState.sheetName} 시트의 셀 매핑을 저장했습니다.`;
-      renderBatchMaster();
-      closeMappingEditor();
-    }
-
-    // ----- BOM 원재료 데이터 → Batch Sheet 반영 -----
-    function flattenProductMaterials(p){
-      const list=[]; (p?.steps||[]).forEach(step=>(step.materials||[]).forEach(m=>list.push(m)));
-      return list;
-    }
-    function getLinkedTemplateAndSheet(p){
-      const mapping=batchMappings[productKey(p)]||{};
-      let template=batchTemplates.find(t=>t.id===mapping.baseSheetId);
-      if(!template) template=batchTemplates.find(t=>t.baseBomId && p.baseBomId && t.baseBomId===p.baseBomId);
-      if(!template) return {error:'해당 품목에 연결된 표준 Batch Sheet가 없습니다.'};
-      const sheetName=(mapping.sheetName && template.sheetNames.includes(mapping.sheetName)) ? mapping.sheetName : template.sheetNames[0];
-      const cellMap=(template.mapping||{})[sheetName];
-      if(!cellMap) return {error:'해당 Template의 Mapping 설정이 완료되지 않았습니다.', template, sheetName};
-      return {template, sheetName, cellMap};
-    }
-
-    function previewBatchSheetFromTemplate(){
-      const p=getSelectedProduct(); const box=document.getElementById('bm-preview-box'); box.classList.remove('hidden');
-      if(!p){ box.innerHTML='<div class="text-rose-400">선택한 품목에 사용할 BOM이 없습니다. 먼저 BOM 검색 탭에서 제품을 선택하세요.</div>'; return; }
-      const qty=parseFloat(document.getElementById('bm-production-qty').value || document.getElementById('bom-target-qty-input')?.value);
-      if(!Number.isFinite(qty)||qty<=0){ box.innerHTML='<div class="text-rose-400">Batch Size를 입력해주세요.</div>'; return; }
-      const link=getLinkedTemplateAndSheet(p);
-      if(link.error){ box.innerHTML=`<div class="text-rose-400">${esc(link.error)}</div>`; return; }
-      const materials=flattenProductMaterials(p);
-      box.innerHTML = `
-        <div class="flex justify-between"><span class="text-slate-400">품목명</span><strong class="text-white">${esc(p.name||'-')}</strong></div>
-        <div class="flex justify-between"><span class="text-slate-400">품목코드</span><strong class="text-white">${esc(p.code||'-')}</strong></div>
-        <div class="flex justify-between"><span class="text-slate-400">Batch Size</span><strong class="text-emerald-300">${fmt(qty,3)} kg</strong></div>
-        <div class="flex justify-between"><span class="text-slate-400">원재료 수</span><strong class="text-white">${materials.length}종</strong></div>
-        <div class="flex justify-between"><span class="text-slate-400">Template</span><strong class="text-white">${esc(link.template.name)} · ${esc(link.sheetName)}</strong></div>`;
-    }
+    function writeIfEditable(cell, value){ if(cell && cell.address) cell.value=value; }
 
     async function generateBatchSheetFromTemplate(){
-      const p=getSelectedProduct(); if(!p){alert('선택한 품목에 사용할 BOM이 없습니다. 먼저 BOM 검색 탭에서 제품을 선택하세요.');return;}
+      const p=getSelectedProduct(); if(!p){alert('먼저 BOM 검색 탭에서 제품을 선택하세요.');return;}
       const qty=parseFloat(document.getElementById('bm-production-qty').value || document.getElementById('bom-target-qty-input')?.value);
-      const status=document.getElementById('bm-status');
-      if(!Number.isFinite(qty)||qty<=0){ alert('Batch Size를 입력해주세요.'); return; }
-      const link=getLinkedTemplateAndSheet(p);
-      if(link.error){ status.textContent=link.error; alert(link.error); return; }
-      const {template, sheetName, cellMap}=link;
-      status.textContent='표준 Batch Sheet Template을 복제하고 BOM 계산 결과를 반영하는 중...';
+      if(!Number.isFinite(qty)||qty<=0){alert('생산수량을 입력하세요.');return;}
+      const mapping=batchMappings[productKey(p)]||{};
+      let template=batchTemplates.find(t=>t.id===mapping.baseSheetId);
+      if(!template) template=batchTemplates.find(t=>t.baseBomId===p.baseBomId);
+      if(!template){alert(`제품 ${p.name}에 연결된 Base Sheet가 없습니다. Batch Sheet Master에서 Excel을 등록하세요.`);return;}
+      const status=document.getElementById('bm-status'); status.textContent='Base Excel을 복제하고 BOM 데이터를 반영하는 중...';
       try{
-        const wb=new ExcelJS.Workbook(); await wb.xlsx.load(new Uint8Array(template.buffer)); // 원본 Template은 수정하지 않고 항상 복제본에만 반영
-        const ws=wb.getWorksheet(sheetName); if(!ws) throw new Error('지원하지 않는 Excel 구조입니다.');
+        const wb=new ExcelJS.Workbook(); await wb.xlsx.load(new Uint8Array(template.buffer));
+        const ws=wb.getWorksheet(mapping.sheetName || template.sheetNames[0]); if(!ws) throw new Error('Worksheet를 찾을 수 없습니다.');
+        // 제품명: 실제 Base의 D2 구조를 유지하며 값만 변경
+        if(ws.getCell('D2')) ws.getCell('D2').value=p.name || p.title || '';
+        // Batch size: 템플릿 수식은 보존하되, BOM 재료값을 매칭되는 행에 반영
         const basis=p.basisQty||1, multiplier=qty/basis;
-        if(cellMap.itemCode) ws.getCell(cellMap.itemCode).value = p.code || '';
-        if(cellMap.itemName) ws.getCell(cellMap.itemName).value = p.name || p.title || '';
-        if(cellMap.batchSize) ws.getCell(cellMap.batchSize).value = Number(qty.toFixed(3));
-        const materials=flattenProductMaterials(p);
-        const startRow=Number(cellMap.materialStartRow);
-        const codeCol=colLetterToIdx(cellMap.materialCodeCol);
-        const nameCol=colLetterToIdx(cellMap.materialNameCol);
-        const qtyCol=colLetterToIdx(cellMap.materialQtyCol);
-        const sgCol=cellMap.materialSgCol ? colLetterToIdx(cellMap.materialSgCol) : null;
-        // 원재료 반복 행: 매핑된 시작 행의 서식(병합/테두리/글꼴 등)을 그대로 복제하여 원재료 개수만큼 아래로 확장 (하단 고정 문구는 밀려서 그대로 보존됨)
-        if(materials.length>1 && typeof ws.duplicateRow==='function'){
-          ws.duplicateRow(startRow, materials.length-1, true);
+        (p.steps||[]).forEach(step=>(step.materials||[]).forEach(mat=>{
+          const row=findMaterialRow(ws,mat); if(!row) return;
+          const c=ws.getCell(row,4); if(typeof c.value==='number' || c.value==null) c.value=Number((mat.stdKg*multiplier).toFixed(3));
+          if(mat.code && !ws.getCell(row,2).value) ws.getCell(row,2).value=mat.code;
+        }));
+        const pigment=getProductPigment(p);
+        if(pigment){
+          const pc=mapping.pigmentCodeCell||'B17', pn=mapping.pigmentNameCell||'C17', pq=mapping.pigmentQtyCell||'D17';
+          ws.getCell(pc).value=pigment.code||''; ws.getCell(pn).value=pigment.name||''; ws.getCell(pq).value=Number((pigment.stdKg*multiplier).toFixed(3));
         }
-        materials.forEach((mat,i)=>{
-          const r=startRow+i;
-          if(mat.code) ws.getCell(r,codeCol).value=mat.code;
-          ws.getCell(r,nameCol).value=mat.name||'';
-          ws.getCell(r,qtyCol).value=Number(((mat.stdKg||0)*multiplier).toFixed(3));
-          if(sgCol && mat.sg!=null) ws.getCell(r,sgCol).value=mat.sg;
-        });
-        const out='BatchSheet_'+String(p.name||'제품').replace(/[\\/:*?"<>|]/g,'_')+'_'+fmt(qty,3).replace(/,/g,'')+'kg.xlsx';
+        const out='Batch Sheet_'+String(p.name||'제품').replace(/[\\/:*?"<>|]/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
         const data=await wb.xlsx.writeBuffer(); const blob=new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=out;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-        status.textContent=`생성 완료: ${out} · Batch Size ${fmt(qty,3)} kg · 원재료 ${materials.length}종 · 원본 서식 유지`;
-      }catch(e){
-        status.textContent='Batch Sheet 생성 중 오류가 발생했습니다. Template 또는 Mapping 설정을 확인해주세요. ('+e.message+')';
-        console.error(e); alert(status.textContent);
-      }
+        status.textContent=`생성 완료: ${out} · 생산수량 ${qty.toFixed(3)} kg · Base 양식 유지`;
+      }catch(e){status.textContent='생성 실패: '+e.message;console.error(e);alert('Batch Sheet 생성 실패: '+e.message);}
     }
 
     // Initialize
     window.addEventListener('DOMContentLoaded', async () => {
-      switchTab('bom');
+      switchTab('normal');
       updateHistoryBadge();
       renderBomSearchResults();
-      renderBatchMaster();
-      renderBatchMappingProducts();
-      if (state.selectedProductKey) { document.getElementById('bm-selected-product').textContent = getSelectedProduct()?.name || 'BOM 검색 탭에서 제품을 선택하세요.'; }
       if (TOPSEAL_SUPABASE) {
         const connected = await testSupabaseConnection();
         if (connected) await loadBomProductsFromSupabase(false);
