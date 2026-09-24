@@ -629,7 +629,6 @@
       </div>
     </div>
 
-    <!-- Print only sheet -->
     <!-- ================= 수율 / LSL 보정 ================= -->
     <div id="yield-view" class="hidden space-y-6">
       <div class="flex items-center justify-between">
@@ -701,27 +700,52 @@
         </div>
       </div>
 
-      <!-- 4. 차트 -->
-      <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-3">
-        <div class="flex items-center justify-between flex-wrap gap-2">
-          <h3 class="font-bold text-sm text-sky-300"><i class="fa-solid fa-chart-column mr-1"></i> 4. 분기별 수율 분석</h3>
-          <div class="flex gap-2">
-            <input id="yl-f-year" type="number" onchange="ylRenderChart()" class="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm">
-            <select id="yl-f-q" onchange="ylRenderChart()" class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm">
-              <option value="Q1">Q1</option><option value="Q2">Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>
+      <!-- 4. 분기별 수율 분석 (트렌드) -->
+      <div class="space-y-4">
+        <div class="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h3 class="font-bold text-lg text-sky-300"><i class="fa-solid fa-chart-line mr-1"></i> 분기별 수율 분석</h3>
+            <div class="text-xs text-slate-400 mt-1">생산 수율 추이를 확인하고, 목표 수율 및 LSL 기준과 비교하여 공정의 안정성을 관리할 수 있습니다.</div>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <select id="yl-f-line" onchange="ylRenderChart()" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm"></select>
+            <input id="yl-f-year" type="number" onchange="ylRenderChart()" class="w-24 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+            <select id="yl-f-mode" onchange="ylRenderChart()" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+              <option value="year">Q1 ~ Q4 (연간)</option>
+              <option value="recent4">최근 4분기</option>
             </select>
           </div>
         </div>
-        <div style="height:340px"><canvas id="yl-chart"></canvas></div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-xs text-center">
-            <thead class="text-slate-400"><tr class="border-b border-slate-700"><th class="py-2">라인</th><th>Batch 수</th><th>목표</th><th>LSL 기준</th><th>실제 평균</th><th>보정값</th><th>보정 후</th></tr></thead>
-            <tbody id="yl-table"></tbody>
-          </table>
+
+        <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+          <div class="text-xs text-slate-400 mb-2">수율 (%)</div>
+          <div style="height:380px"><canvas id="yl-chart"></canvas></div>
+        </div>
+
+        <div id="yl-kpis" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          <div class="lg:col-span-3 bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+            <h4 class="font-bold text-sm text-sky-300 mb-3"><i class="fa-solid fa-table mr-1"></i> 분기별 수율 현황</h4>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-center">
+                <thead class="bg-slate-900 text-slate-400"><tr>
+                  <th class="py-2">분기</th><th>Batch 수</th><th>목표 수율</th><th>LSL</th><th>실제 수율</th><th>평균 수율</th><th>표준편차(σ)</th><th>보정 후</th>
+                </tr></thead>
+                <tbody id="yl-table"></tbody>
+              </table>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-2">실제 수율 = 분기 총취출량 ÷ 총 Batch Size · 평균 수율 = Batch별 수율의 산술평균 · σ = Batch별 수율의 표준편차(n−1) · 보정 후 = LSL 보정 저장값 반영</div>
+          </div>
+          <div class="lg:col-span-2 bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+            <h4 class="font-bold text-sm text-amber-300 mb-3"><i class="fa-solid fa-lightbulb mr-1"></i> 주요 지표 분석</h4>
+            <div id="yl-insights" class="space-y-3 text-xs"></div>
+          </div>
         </div>
       </div>
     </div>
 
+    <!-- Print only sheet -->
     <div id="print-sheet" class="print-only hidden p-6 text-black">
       <!-- Printable view template -->
     </div>
@@ -2980,7 +3004,7 @@
       if (!yl.ready) {
         document.getElementById('yl-prod-date').valueAsDate = new Date();
         ['yl-lsl-year', 'yl-f-year'].forEach(id => document.getElementById(id).value = new Date().getFullYear());
-        ['yl-lsl-q', 'yl-f-q'].forEach(id => document.getElementById(id).value = ylQ());
+        document.getElementById('yl-lsl-q').value = ylQ();
         yl.ready = true;
       }
       if (!TOPSEAL_SUPABASE) { ylStatus('Supabase 미설정', 'error'); return; }
@@ -2996,7 +3020,7 @@
       if (error) return ylErr('라인 조회', error);
       yl.lines = data || [];
       const opts = yl.lines.map(l => `<option value="${esc(l.line_code)}">${esc(l.line_name)} (${esc(l.line_code)})</option>`).join('');
-      ['yl-prod-line', 'yl-lsl-line'].forEach(id => {
+      ['yl-prod-line', 'yl-lsl-line', 'yl-f-line'].forEach(id => {
         const el = document.getElementById(id), prev = el.value;
         el.innerHTML = opts;
         if (prev) el.value = prev;
@@ -3122,43 +3146,169 @@
       ylRenderChart();
     }
 
-    // ---------- 4. 차트 ----------
+    // ---------- 4. 분기별 수율 분석 (트렌드) ----------
+    const ylMean = a => a.reduce((s, v) => s + v, 0) / a.length;
+    const ylSd = a => { if (a.length < 2) return null; const m = ylMean(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / (a.length - 1)); };
+    const ylFmt = (v, d = 3, suf = '%') => v == null || isNaN(v) ? '-' : Number(v).toFixed(d) + suf;
+    const YL_MONTHS = ['', '1~3월', '4~6월', '7~9월', '10~12월'];
+
+    function ylQuarterList(mode, year) {
+      const list = [];
+      if (mode === 'recent4') {
+        const now = new Date(); let y = now.getFullYear(), q = Math.floor(now.getMonth() / 3) + 1;
+        for (let i = 0; i < 4; i++) { list.unshift({ y, q }); if (--q < 1) { q = 4; y--; } }
+      } else for (let q = 1; q <= 4; q++) list.push({ y: year, q });
+      return list;
+    }
+
+    async function ylFetchRecords(line, from, to) {
+      let all = [], start = 0;
+      while (true) {
+        const { data, error } = await TOPSEAL_SUPABASE.from('production_records')
+          .select('prod_date,batch_size_kg,actual_output_kg,actual_yield')
+          .eq('line_code', line).gte('prod_date', from).lte('prod_date', to)
+          .order('prod_date').range(start, start + 999);
+        if (error) throw error;
+        all = all.concat(data || []);
+        if (!data || data.length < 1000) break;
+        start += 1000;
+      }
+      return all;
+    }
+
+    // 점 값 라벨 + 우측 기준선 라벨 (겹치면 위아래로 밀어냄)
+    const ylLabelPlugin = {
+      id: 'ylLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx, chartArea: a } = chart;
+        ctx.save(); ctx.font = 'bold 12px sans-serif';
+        const m0 = chart.getDatasetMeta(0);
+        if (chart.isDatasetVisible(0)) {
+          ctx.textAlign = 'center'; ctx.fillStyle = '#60a5fa';
+          m0.data.forEach((pt, i) => { const v = chart.data.datasets[0].data[i]; if (v != null) ctx.fillText(v.toFixed(2) + '%', pt.x, pt.y - 14); });
+        }
+        const items = [];
+        chart.data.datasets.forEach((d, i) => {
+          if (!d.refLabel || !chart.isDatasetVisible(i)) return;
+          const v = d.data.find(x => x != null); if (v == null) return;
+          items.push({ y: chart.scales.y.getPixelForValue(v), text: `${d.refLabel} ${v.toFixed(d.refDigits ?? 2)}%`, color: d.borderColor });
+        });
+        items.sort((p, q) => p.y - q.y);
+        for (let i = 1; i < items.length; i++) if (items[i].y - items[i - 1].y < 15) items[i].y = items[i - 1].y + 15;
+        ctx.textAlign = 'left';
+        items.forEach(it => { ctx.fillStyle = it.color; ctx.fillText(it.text, a.right + 8, it.y + 4); });
+        ctx.restore();
+      }
+    };
+
     async function ylRenderChart() {
       if (!TOPSEAL_SUPABASE || !window.Chart) return;
-      const year = parseInt(document.getElementById('yl-f-year').value), q = document.getElementById('yl-f-q').value;
-      const { data, error } = await TOPSEAL_SUPABASE.from('view_yield_chart').select('*').or(`and(year.eq.${year},quarter.eq.${q}),year.is.null`).order('line_code');
-      if (error) return ylErr('차트 조회', error);
-      // 해당 분기 실적이 없는 라인은 목표/LSL만 표시
-      const byLine = {};
-      (data || []).forEach(r => { if (!byLine[r.line_code] || r.year) byLine[r.line_code] = r; });
-      const rows = yl.lines.map(l => byLine[l.line_code] || { line_code: l.line_code, line_name: l.line_name, target_yield: l.target_yield, lsl_standard: l.lsl_standard });
-      const n = v => (v == null ? null : Number(v));
-      Chart.defaults.color = '#cbd5e1';
-      Chart.defaults.borderColor = '#334155';
+      const line = document.getElementById('yl-f-line').value;
+      const mode = document.getElementById('yl-f-mode').value;
+      const yearEl = document.getElementById('yl-f-year');
+      yearEl.disabled = mode === 'recent4';
+      if (!line) { document.getElementById('yl-insights').innerHTML = '<div class="text-slate-500">라인을 먼저 등록하세요.</div>'; return; }
+      const lineObj = yl.lines.find(l => l.line_code === line) || {};
+      const target = Number(lineObj.target_yield), lsl = Number(lineObj.lsl_standard);
+      const qs = ylQuarterList(mode, parseInt(yearEl.value) || new Date().getFullYear());
+      const first = qs[0], last = qs[3];
+      const from = `${first.y}-${String(first.q * 3 - 2).padStart(2, '0')}-01`;
+      const to = `${last.y}-${String(last.q * 3).padStart(2, '0')}-${new Date(last.y, last.q * 3, 0).getDate()}`;
+
+      let recs, adjRows;
+      try {
+        recs = await ylFetchRecords(line, from, to);
+        const yrs = [...new Set(qs.map(x => x.y))];
+        const r = await TOPSEAL_SUPABASE.from('lsl_adjustments').select('*').eq('line_code', line).in('year', yrs);
+        if (r.error) throw r.error;
+        adjRows = r.data || [];
+      } catch (e) { return ylErr('수율 분석 조회', e); }
+
+      // 분기별 집계
+      const rows = qs.map(({ y, q }) => {
+        const rs = recs.filter(r => +r.prod_date.slice(0, 4) === y && Math.ceil(+r.prod_date.slice(5, 7) / 3) === q);
+        const ys = rs.map(r => Number(r.actual_yield));
+        const b = rs.reduce((s, r) => s + Number(r.batch_size_kg), 0), o = rs.reduce((s, r) => s + Number(r.actual_output_kg), 0);
+        const adj = adjRows.find(a => a.year === y && a.quarter === 'Q' + q);
+        return { y, q, n: rs.length, actual: b > 0 ? o / b * 100 : null, mean: ys.length ? ylMean(ys) : null, sd: ylSd(ys),
+                 adjusted: adj ? Number(adj.adjusted_yield) : null, label: [mode === 'recent4' ? `${y} Q${q}` : `Q${q}`, `(${YL_MONTHS[q]})`] };
+      });
+      const all = recs.map(r => Number(r.actual_yield));
+      const mean = all.length ? ylMean(all) : null, sd = ylSd(all);
+      const ucl = mean != null && sd != null ? mean + 3 * sd : null, lcl = mean != null && sd != null ? mean - 3 * sd : null;
+      const flat = v => v == null ? rows.map(() => null) : rows.map(() => v);
+      const dash = (label, v, color, dashArr, digits = 2) => ({ label, data: flat(v), borderColor: color, borderDash: dashArr, borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, fill: false, refLabel: v == null ? null : label.replace(/ \(.*\)$/, ''), refDigits: digits });
+
+      const datasets = [
+        { label: '실제 수율', data: rows.map(r => r.actual), borderColor: '#3b82f6', backgroundColor: '#3b82f6', borderWidth: 3, pointRadius: 6, pointHoverRadius: 8, tension: 0, spanGaps: false },
+        dash('평균 수율', mean, '#38bdf8', [6, 5], 2),
+        dash('목표 수율', target, '#22c55e', [8, 5], 1),
+        dash('LSL', lsl, '#f59e0b', [8, 5], 1)
+      ];
+      if (ucl != null) {
+        datasets.push({ ...dash('UCL (3σ)', ucl, '#818cf8', [3, 4], 2), fill: '+1', backgroundColor: 'rgba(59,130,246,0.10)' });
+        datasets.push(dash('LCL (3σ)', lcl, '#a78bfa', [3, 4], 2));
+      }
+      if (rows.some(r => r.adjusted != null)) {
+        datasets.push({ label: '보정 후 수율', data: rows.map(r => r.adjusted), borderColor: '#10b981', backgroundColor: '#10b981', borderWidth: 2, pointStyle: 'rectRot', pointRadius: 6, tension: 0, spanGaps: false });
+      }
+      const vals = datasets.flatMap(d => d.data).filter(v => v != null);
+      const yMin = Math.floor(Math.min(...vals) - 1), yMax = Math.min(100, Math.ceil(Math.max(...vals) + 1));
+
+      Chart.defaults.color = '#cbd5e1'; Chart.defaults.borderColor = '#1e293b';
       if (yl.chart) yl.chart.destroy();
       yl.chart = new Chart(document.getElementById('yl-chart').getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels: rows.map(r => r.line_name),
-          datasets: [
-            { label: '목표 수율', data: rows.map(r => n(r.target_yield)), backgroundColor: '#93c5fd' },
-            { label: 'LSL 기준', data: rows.map(r => n(r.lsl_standard)), backgroundColor: '#fca5a5' },
-            { label: '실제 평균', data: rows.map(r => n(r.actual_avg_yield)), backgroundColor: '#3b82f6' },
-            { label: '보정 후 수율', data: rows.map(r => n(r.adjusted_yield)), backgroundColor: '#10b981' }
-          ]
-        },
+        type: 'line',
+        data: { labels: rows.map(r => r.label), datasets },
+        plugins: [ylLabelPlugin],
         options: {
           responsive: true, maintainAspectRatio: false,
-          scales: { y: { min: 80, max: 100, title: { display: true, text: '수율 (%)' } } },
-          plugins: { legend: { position: 'bottom' }, tooltip: { mode: 'index', intersect: false } }
+          layout: { padding: { right: 140, top: 10 } },
+          scales: { y: { min: yMin, max: yMax, ticks: { callback: v => v.toFixed(1) } }, x: { grid: { color: '#1e293b' } } },
+          plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y == null ? '-' : c.parsed.y.toFixed(3)}%` } } }
         }
       });
-      const f = (v, d = 2) => v == null ? '-' : Number(v).toFixed(d);
-      document.getElementById('yl-table').innerHTML = rows.map(r => `<tr class="border-b border-slate-800">
-        <td class="py-1.5 font-bold text-fuchsia-300">${esc(r.line_name)}</td><td>${r.batch_count ?? '-'}</td>
-        <td>${f(r.target_yield)}</td><td>${f(r.lsl_standard)}</td><td>${f(r.actual_avg_yield, 3)}</td>
-        <td class="text-amber-300">${r.actual_avg_yield == null ? '-' : f(r.lsl_adjustment, 3)}</td>
-        <td class="font-bold text-emerald-400">${f(r.adjusted_yield, 3)}</td></tr>`).join('') || '<tr><td colspan="7" class="py-3 text-slate-500">라인을 등록하세요.</td></tr>';
+
+      // KPI 카드
+      const kpi = (icon, name, val, sub, color) => `<div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+        <div class="flex items-center gap-2 text-sm text-slate-300"><i class="fa-solid ${icon} ${color}"></i>${name}</div>
+        <div class="text-2xl font-extrabold mt-2 ${color}">${val}</div><div class="text-[11px] text-slate-500 mt-1">(${sub})</div></div>`;
+      document.getElementById('yl-kpis').innerHTML =
+        kpi('fa-bullseye', '목표수율', ylFmt(target), '설정 기준', 'text-emerald-400') +
+        kpi('fa-shield-halved', 'LSL', ylFmt(lsl), '설정 기준', 'text-amber-400') +
+        kpi('fa-chart-simple', '평균 수율', ylFmt(mean), '전체 평균', 'text-sky-400') +
+        kpi('fa-chart-area', '표준편차 (σ)', ylFmt(sd, 3, '%p'), '누적 데이터 기준', 'text-violet-400') +
+        kpi('fa-arrow-trend-up', 'UCL (3σ)', ylFmt(ucl), '평균 + 3σ', 'text-indigo-300') +
+        kpi('fa-arrow-trend-down', 'LCL (3σ)', ylFmt(lcl), '평균 − 3σ', 'text-violet-300');
+
+      // 표
+      const tr = rows.map(r => `<tr class="border-b border-slate-800">
+        <td class="py-2 text-slate-300">Q${r.q} (${YL_MONTHS[r.q]})${mode === 'recent4' ? ' · ' + r.y : ''}</td><td>${r.n}</td>
+        <td>${ylFmt(target, 2)}</td><td>${ylFmt(lsl, 2)}</td>
+        <td class="font-bold ${r.actual == null ? '' : r.actual >= lsl ? 'text-emerald-400' : 'text-rose-400'}">${ylFmt(r.actual)}</td>
+        <td>${ylFmt(r.mean)}</td><td>${ylFmt(r.sd)}</td><td class="text-emerald-300">${ylFmt(r.adjusted)}</td></tr>`).join('');
+      const tot = `<tr class="bg-slate-900 font-bold"><td class="py-2">전체</td><td>${recs.length}</td><td>${ylFmt(target, 2)}</td><td>${ylFmt(lsl, 2)}</td>
+        <td class="text-emerald-400">${ylFmt(recs.length ? recs.reduce((s, r) => s + Number(r.actual_output_kg), 0) / recs.reduce((s, r) => s + Number(r.batch_size_kg), 0) * 100 : null)}</td>
+        <td>${ylFmt(mean)}</td><td>${ylFmt(sd)}</td><td>-</td></tr>`;
+      document.getElementById('yl-table').innerHTML = tr + tot;
+
+      // 주요 지표 분석
+      const box = document.getElementById('yl-insights');
+      if (mean == null) { box.innerHTML = '<div class="text-slate-500">해당 기간 생산 실적이 없습니다. 실적을 입력하면 분석이 표시됩니다.</div>'; return; }
+      const item = (icon, color, title, body) => `<div class="flex gap-3"><div class="w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${color}"><i class="fa-solid ${icon} text-slate-950"></i></div>
+        <div><div class="font-bold ${color.replace('bg-', 'text-')}">${title}</div><div class="text-slate-300 mt-0.5 leading-relaxed">${body}</div></div></div>`;
+      const dT = mean - target, dL = mean - lsl;
+      const below = recs.filter(r => Number(r.actual_yield) < lsl).length;
+      const withData = rows.filter(r => r.actual != null);
+      const low = withData.reduce((m, r) => (m == null || r.actual < m.actual ? r : m), null);
+      const cpk = sd > 0 ? dL / (3 * sd) : null;
+      const cpkTxt = cpk == null ? '' : ` 하한 공정능력 Cpl = (평균−LSL)/3σ = <b>${cpk.toFixed(2)}</b> (${cpk >= 1.33 ? '양호' : cpk >= 1 ? '보통' : '개선 필요'}).`;
+      const sdTxt = sd == null ? 'Batch가 2건 미만이라 표준편차를 계산할 수 없습니다.' : `표준편차 ${sd.toFixed(3)}%p로 ${sd < 0.5 ? '안정적인' : sd < 1 ? '보통 수준의' : '변동이 큰'} 공정 상태입니다.`;
+      box.innerHTML =
+        item('fa-check', dT >= 0 ? 'bg-emerald-400' : 'bg-amber-400', '목표 달성 현황', `전체 평균 수율 ${mean.toFixed(3)}%로 목표수율(${target.toFixed(1)}%) 대비 ${Math.abs(dT).toFixed(3)}%p ${dT >= 0 ? '높습니다' : '낮습니다'}.`) +
+        item('fa-exclamation', dL >= 0 ? 'bg-amber-400' : 'bg-rose-400', 'LSL 여유도', `평균 수율이 LSL(${lsl.toFixed(1)}%)보다 ${Math.abs(dL).toFixed(3)}%p ${dL >= 0 ? '높아 현재는 기준을 만족합니다' : '낮아 기준 미달입니다'}. LSL 미만 Batch ${below}건 / ${recs.length}건.`) +
+        item('fa-wave-square', 'bg-sky-400', '공정 변동성', sdTxt) +
+        item('fa-bullseye', 'bg-violet-400', '향후 관리 포인트', `${low ? `Q${low.q}${mode === 'recent4' ? '(' + low.y + ')' : ''} 수율(${low.actual.toFixed(2)}%)이 가장 낮았으므로 해당 기간의 원인 분석이 필요합니다.` : ''}${cpkTxt}`);
     }
 
     // Initialize
