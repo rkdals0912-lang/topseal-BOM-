@@ -51,6 +51,7 @@
 <script src="supabase-config.js"></script>
 -->
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen">
   <div id="app" class="max-w-7xl mx-auto px-4 py-6 space-y-6">
@@ -109,6 +110,9 @@
         <button id="tab-cart-btn" onclick="switchTab('cart')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
           <i class="fa-solid fa-cart-shopping text-amber-400"></i> BOM 장바구니
           <span id="cart-badge-count" class="hidden text-xs bg-amber-500 text-slate-950 font-extrabold px-2 py-0.5 rounded-full">0</span>
+        </button>
+        <button id="tab-yield-btn" onclick="switchTab('yield')" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i class="fa-solid fa-chart-line text-fuchsia-400"></i> 수율 / LSL 보정
         </button>
       </div>
       <div class="text-xs text-slate-400 hidden lg:block">
@@ -626,6 +630,98 @@
     </div>
 
     <!-- Print only sheet -->
+    <!-- ================= 수율 / LSL 보정 ================= -->
+    <div id="yield-view" class="hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div class="text-xs text-slate-400">Supabase 테이블: product_lines · production_records · lsl_adjustments (supabase-yield-schema.sql 실행 필요)</div>
+        <div id="yl-status" class="text-[11px] px-2 py-1 rounded border border-slate-700 text-slate-400">대기</div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- 1. 라인 / BOM 자동 연결 -->
+        <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-3">
+          <h3 class="font-bold text-sm text-fuchsia-300"><i class="fa-solid fa-diagram-project mr-1"></i> 1. 라인 등록 · BOM 자동 연결</h3>
+          <input id="yl-line-name" type="text" placeholder="라인명 (O200 입력 → B_O200 자동 생성)" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+          <div class="grid grid-cols-2 gap-2">
+            <input id="yl-line-target" type="number" step="0.01" value="98" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm" title="목표 수율(%)">
+            <input id="yl-line-lsl" type="number" step="0.01" value="95" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm" title="LSL 기준(%)">
+          </div>
+          <div class="text-[10px] text-slate-500 -mt-1">왼쪽 목표 수율(%) · 오른쪽 LSL 기준(%) · 기존 라인명 입력 시 값 수정</div>
+          <button onclick="ylAddLine()" class="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold text-sm rounded py-2">라인 저장</button>
+          <div class="text-xs text-slate-400 font-bold pt-1">라인별 연결 BOM 품목 (product_code가 라인코드로 시작)</div>
+          <div id="yl-line-list" class="space-y-2 max-h-72 overflow-y-auto text-xs"></div>
+        </div>
+
+        <!-- 2. 생산 실적 -->
+        <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-3">
+          <h3 class="font-bold text-sm text-emerald-300"><i class="fa-solid fa-flask mr-1"></i> 2. 생산 실적 입력 (수율 자동 계산)</h3>
+          <select id="yl-prod-line" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"></select>
+          <div class="grid grid-cols-2 gap-2">
+            <input id="yl-prod-date" type="date" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+            <input id="yl-prod-lot" type="text" placeholder="LOT NO (선택)" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <input id="yl-batch" type="number" step="0.001" placeholder="Batch Size (kg)" oninput="ylCalcYield()" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+            <input id="yl-output" type="number" step="0.001" placeholder="실제 취출량 (kg)" oninput="ylCalcYield()" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+          </div>
+          <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded px-3 py-2">
+            <span class="text-xs text-slate-400">수율</span><span id="yl-yield-out" class="font-extrabold text-emerald-400">-</span>
+          </div>
+          <button onclick="ylSaveRecord()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded py-2">생산 실적 저장</button>
+          <div class="text-xs text-slate-400 font-bold pt-1">최근 실적 (20건)</div>
+          <div id="yl-record-list" class="max-h-52 overflow-y-auto text-xs"></div>
+        </div>
+
+        <!-- 3. LSL 보정 -->
+        <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-3">
+          <h3 class="font-bold text-sm text-amber-300"><i class="fa-solid fa-sliders mr-1"></i> 3. 분기별 LSL 보정</h3>
+          <select id="yl-lsl-line" onchange="ylLoadLslForm()" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"></select>
+          <div class="grid grid-cols-2 gap-2">
+            <input id="yl-lsl-year" type="number" onchange="ylLoadLslForm()" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+            <select id="yl-lsl-q" onchange="ylLoadLslForm()" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+              <option value="Q1">Q1 (1~3월)</option><option value="Q2">Q2 (4~6월)</option><option value="Q3">Q3 (7~9월)</option><option value="Q4">Q4 (10~12월)</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[11px] text-slate-400">기존 수율 기준값(%)</label>
+            <input id="yl-base" type="number" step="0.01" oninput="ylCalcFinal()" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="text-[11px] text-slate-400">실제 평균 수율(%) <span id="yl-avg-hint" class="text-slate-500"></span></label>
+            <input id="yl-avg" type="number" step="0.001" oninput="ylCalcFinal()" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="text-[11px] text-slate-400">LSL 보정값(%p, 소수 3자리)</label>
+            <input id="yl-adj" type="number" step="0.001" value="0" oninput="ylCalcFinal()" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm">
+          </div>
+          <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded px-3 py-2">
+            <span class="text-xs text-slate-400">보정 후 수율 (평균 − 보정값)</span><span id="yl-final" class="font-extrabold text-amber-300">-</span>
+          </div>
+          <button onclick="ylSaveLsl()" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm rounded py-2">LSL 보정 저장</button>
+        </div>
+      </div>
+
+      <!-- 4. 차트 -->
+      <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-3">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <h3 class="font-bold text-sm text-sky-300"><i class="fa-solid fa-chart-column mr-1"></i> 4. 분기별 수율 분석</h3>
+          <div class="flex gap-2">
+            <input id="yl-f-year" type="number" onchange="ylRenderChart()" class="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm">
+            <select id="yl-f-q" onchange="ylRenderChart()" class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm">
+              <option value="Q1">Q1</option><option value="Q2">Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>
+            </select>
+          </div>
+        </div>
+        <div style="height:340px"><canvas id="yl-chart"></canvas></div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-center">
+            <thead class="text-slate-400"><tr class="border-b border-slate-700"><th class="py-2">라인</th><th>Batch 수</th><th>목표</th><th>LSL 기준</th><th>실제 평균</th><th>보정값</th><th>보정 후</th></tr></thead>
+            <tbody id="yl-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <div id="print-sheet" class="print-only hidden p-6 text-black">
       <!-- Printable view template -->
     </div>
@@ -1055,6 +1151,8 @@
       const vendorBtn = document.getElementById('tab-vendor-btn');
       const bomBtn = document.getElementById('tab-bom-btn');
       const cartBtn = document.getElementById('tab-cart-btn');
+      const yieldBtn = document.getElementById('tab-yield-btn');
+      const yieldView = document.getElementById('yield-view');
       const simView = document.getElementById('simulator-view');
       const vendorView = document.getElementById('vendor-view');
       const reclaimPanel = document.getElementById('reclaim-panel');
@@ -1062,7 +1160,7 @@
       const cartView = document.getElementById('cart-view');
       const modeLabel = document.getElementById('current-mode-label');
 
-      [normalBtn, reclaimBtn, vendorBtn, bomBtn, cartBtn].forEach(b => {
+      [normalBtn, reclaimBtn, vendorBtn, bomBtn, cartBtn, yieldBtn].forEach(b => {
         b.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300';
       });
 
@@ -1071,6 +1169,7 @@
       reclaimPanel.classList.add('hidden');
       bomView.classList.add('hidden');
       cartView.classList.add('hidden');
+      yieldView.classList.add('hidden');
 
       if (tab === 'normal') {
         normalBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30';
@@ -1089,6 +1188,12 @@
         modeLabel.innerText = 'BOM 검색 / 배치시트 인쇄';
         modeLabel.className = 'font-bold text-amber-300';
         renderBomSearchResults();
+      } else if (tab === 'yield') {
+        yieldBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-fuchsia-600 text-white shadow-lg shadow-fuchsia-600/30';
+        yieldView.classList.remove('hidden');
+        modeLabel.innerText = '수율 / 분기별 LSL 보정';
+        modeLabel.className = 'font-bold text-fuchsia-300';
+        ylInit();
       } else if (tab === 'cart') {
         cartBtn.className = 'px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2 bg-amber-600 text-white shadow-lg shadow-amber-600/30';
         cartView.classList.remove('hidden');
@@ -2847,6 +2952,213 @@
         const data=await wb.xlsx.writeBuffer(); const blob=new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=out;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
         status.textContent=`생성 완료: ${out} · 생산수량 ${qty.toFixed(3)} kg · Base 양식 유지`;
       }catch(e){status.textContent='생성 실패: '+e.message;console.error(e);alert('Batch Sheet 생성 실패: '+e.message);}
+    }
+
+    // ======================================================================
+    // 수율 / LSL 보정 (Supabase: product_lines, production_records, lsl_adjustments)
+    // ======================================================================
+    const yl = { lines: [], records: [], chart: null, ready: false };
+    const ylQ = () => 'Q' + (Math.floor(new Date().getMonth() / 3) + 1);
+    const ylNum = id => parseFloat(document.getElementById(id).value);
+
+    function ylStatus(msg, type = 'neutral') {
+      const el = document.getElementById('yl-status');
+      if (!el) return;
+      const cls = { ok: 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10', error: 'border-rose-500/40 text-rose-300 bg-rose-500/10', neutral: 'border-slate-700 text-slate-400' }[type];
+      el.className = `text-[11px] px-2 py-1 rounded border ${cls}`;
+      el.textContent = msg;
+    }
+
+    function ylErr(prefix, e) {
+      console.error(prefix, e);
+      const missing = /relation|does not exist|schema cache/i.test(e.message || '');
+      ylStatus(missing ? '테이블 없음 · supabase-yield-schema.sql 실행 필요' : prefix + ' 실패', 'error');
+      alert(prefix + ' 실패\n\n' + (e.message || e));
+    }
+
+    async function ylInit() {
+      if (!yl.ready) {
+        document.getElementById('yl-prod-date').valueAsDate = new Date();
+        ['yl-lsl-year', 'yl-f-year'].forEach(id => document.getElementById(id).value = new Date().getFullYear());
+        ['yl-lsl-q', 'yl-f-q'].forEach(id => document.getElementById(id).value = ylQ());
+        yl.ready = true;
+      }
+      if (!TOPSEAL_SUPABASE) { ylStatus('Supabase 미설정', 'error'); return; }
+      await ylLoadLines();
+      await ylLoadRecords();
+      await ylLoadLslForm();
+      await ylRenderChart();
+    }
+
+    // ---------- 1. 라인 ----------
+    async function ylLoadLines() {
+      const { data, error } = await TOPSEAL_SUPABASE.from('product_lines').select('*').order('line_code');
+      if (error) return ylErr('라인 조회', error);
+      yl.lines = data || [];
+      const opts = yl.lines.map(l => `<option value="${esc(l.line_code)}">${esc(l.line_name)} (${esc(l.line_code)})</option>`).join('');
+      ['yl-prod-line', 'yl-lsl-line'].forEach(id => {
+        const el = document.getElementById(id), prev = el.value;
+        el.innerHTML = opts;
+        if (prev) el.value = prev;
+      });
+      ylRenderLineList();
+      ylStatus(`연결됨 · 라인 ${yl.lines.length}개`, 'ok');
+    }
+
+    // 라인코드로 시작하는 BOM 품목 (겹치면 가장 긴 라인코드에 연결 - DB 뷰와 동일 규칙)
+    function ylLinkedProducts(line) {
+      const codes = yl.lines.map(l => l.line_code);
+      return (state.productDb || []).filter(p => {
+        const c = String(p.code || '').toUpperCase();
+        if (!c.startsWith(line.line_code)) return false;
+        const longer = codes.filter(x => x.length > line.line_code.length && c.startsWith(x));
+        return longer.length === 0;
+      });
+    }
+
+    function ylRenderLineList() {
+      const box = document.getElementById('yl-line-list');
+      if (!yl.lines.length) { box.innerHTML = '<div class="text-slate-500">등록된 라인이 없습니다.</div>'; return; }
+      box.innerHTML = yl.lines.map(l => {
+        const ps = ylLinkedProducts(l);
+        return `<div class="bg-slate-900 border border-slate-700 rounded p-2">
+          <div class="flex justify-between"><strong class="text-fuchsia-300">${esc(l.line_code)}</strong>
+            <span class="text-slate-400">목표 ${l.target_yield}% · LSL ${l.lsl_standard}%</span></div>
+          <div class="text-slate-400 mt-1">${ps.length ? ps.slice(0, 6).map(p => esc(p.code) + ' ' + esc(p.name || '')).join('<br>') + (ps.length > 6 ? `<br>… 외 ${ps.length - 6}건` : '') : '연결된 BOM 품목 없음'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    async function ylAddLine() {
+      const raw = document.getElementById('yl-line-name').value.trim().toUpperCase().replace(/^B_/, '');
+      if (!raw) return alert('라인명을 입력하세요.');
+      const row = { line_code: 'B_' + raw, line_name: raw, target_yield: ylNum('yl-line-target') || 98, lsl_standard: ylNum('yl-line-lsl') || 95 };
+      const { error } = await TOPSEAL_SUPABASE.from('product_lines').upsert(row, { onConflict: 'line_code' });
+      if (error) return ylErr('라인 저장', error);
+      document.getElementById('yl-line-name').value = '';
+      await ylLoadLines();
+      ylRenderChart();
+    }
+
+    // ---------- 2. 생산 실적 ----------
+    function ylCalcYield() {
+      const b = ylNum('yl-batch'), o = ylNum('yl-output');
+      document.getElementById('yl-yield-out').textContent = b > 0 && !isNaN(o) ? (o / b * 100).toFixed(2) + '%' : '-';
+    }
+
+    async function ylSaveRecord() {
+      const line = document.getElementById('yl-prod-line').value;
+      const b = ylNum('yl-batch'), o = ylNum('yl-output'), d = document.getElementById('yl-prod-date').value;
+      if (!line) return alert('라인을 먼저 등록하세요.');
+      if (!d || !(b > 0) || isNaN(o) || o < 0) return alert('일자, Batch Size, 취출량을 확인하세요.');
+      const { error } = await TOPSEAL_SUPABASE.from('production_records').insert({
+        line_code: line, prod_date: d, lot_no: document.getElementById('yl-prod-lot').value.trim(),
+        batch_size_kg: b, actual_output_kg: o
+      });
+      if (error) return ylErr('실적 저장', error);
+      ['yl-batch', 'yl-output', 'yl-prod-lot'].forEach(id => document.getElementById(id).value = '');
+      ylCalcYield();
+      await ylLoadRecords();
+      await ylLoadLslForm();
+      ylRenderChart();
+    }
+
+    async function ylLoadRecords() {
+      const { data, error } = await TOPSEAL_SUPABASE.from('production_records').select('*').order('prod_date', { ascending: false }).order('id', { ascending: false }).limit(20);
+      if (error) return ylErr('실적 조회', error);
+      yl.records = data || [];
+      document.getElementById('yl-record-list').innerHTML = yl.records.length ? `<table class="w-full text-center">
+        <tbody>${yl.records.map(r => `<tr class="border-b border-slate-800">
+          <td class="py-1 text-slate-400">${r.prod_date}</td><td>${esc(r.line_code)}</td>
+          <td class="text-slate-400">${r.batch_size_kg}/${r.actual_output_kg}</td>
+          <td class="font-bold text-emerald-400">${Number(r.actual_yield).toFixed(2)}%</td>
+          <td><button onclick="ylDeleteRecord(${r.id})" class="text-rose-400 hover:text-rose-300"><i class="fa-solid fa-trash"></i></button></td></tr>`).join('')}</tbody></table>`
+        : '<div class="text-slate-500">실적이 없습니다.</div>';
+    }
+
+    async function ylDeleteRecord(id) {
+      if (!confirm('이 실적을 삭제할까요?')) return;
+      const { error } = await TOPSEAL_SUPABASE.from('production_records').delete().eq('id', id);
+      if (error) return ylErr('실적 삭제', error);
+      await ylLoadRecords(); await ylLoadLslForm(); ylRenderChart();
+    }
+
+    // ---------- 3. LSL 보정 ----------
+    function ylCalcFinal() {
+      const avg = ylNum('yl-avg'), adj = ylNum('yl-adj') || 0;
+      document.getElementById('yl-final').textContent = isNaN(avg) ? '-' : (avg - adj).toFixed(3) + '%';
+    }
+
+    // 선택한 라인/연도/분기의 저장된 보정값 + 실적 가중 평균을 폼에 채움
+    async function ylLoadLslForm() {
+      const line = document.getElementById('yl-lsl-line').value;
+      if (!line) return;
+      const year = parseInt(document.getElementById('yl-lsl-year').value), q = document.getElementById('yl-lsl-q').value;
+      const lineObj = yl.lines.find(l => l.line_code === line);
+      const [adjRes, avgRes] = await Promise.all([
+        TOPSEAL_SUPABASE.from('lsl_adjustments').select('*').eq('line_code', line).eq('year', year).eq('quarter', q).maybeSingle(),
+        TOPSEAL_SUPABASE.from('view_quarterly_yield').select('*').eq('line_code', line).eq('year', year).eq('quarter', q).maybeSingle()
+      ]);
+      const saved = adjRes.data, live = avgRes.data;
+      document.getElementById('yl-base').value = saved ? saved.base_yield : (lineObj ? lineObj.target_yield : 98);
+      const avg = live ? live.weighted_avg_yield : (saved ? saved.actual_avg_yield : '');
+      document.getElementById('yl-avg').value = avg;
+      document.getElementById('yl-avg-hint').textContent = live ? `· 실적 ${live.batch_count}건 가중평균 자동 반영` : '· 해당 분기 실적 없음(직접 입력)';
+      document.getElementById('yl-adj').value = saved ? saved.lsl_adjustment : 0;
+      ylCalcFinal();
+    }
+
+    async function ylSaveLsl() {
+      const line = document.getElementById('yl-lsl-line').value;
+      const base = ylNum('yl-base'), avg = ylNum('yl-avg'), adj = ylNum('yl-adj');
+      if (!line) return alert('라인을 먼저 등록하세요.');
+      if ([base, avg, adj].some(isNaN)) return alert('기준값, 평균 수율, 보정값을 모두 입력하세요.');
+      const { error } = await TOPSEAL_SUPABASE.from('lsl_adjustments').upsert({
+        year: parseInt(document.getElementById('yl-lsl-year').value), quarter: document.getElementById('yl-lsl-q').value,
+        line_code: line, base_yield: base, actual_avg_yield: avg, lsl_adjustment: adj
+      }, { onConflict: 'year,quarter,line_code' });
+      if (error) return ylErr('LSL 보정 저장', error);
+      ylStatus('LSL 보정 저장됨', 'ok');
+      ylRenderChart();
+    }
+
+    // ---------- 4. 차트 ----------
+    async function ylRenderChart() {
+      if (!TOPSEAL_SUPABASE || !window.Chart) return;
+      const year = parseInt(document.getElementById('yl-f-year').value), q = document.getElementById('yl-f-q').value;
+      const { data, error } = await TOPSEAL_SUPABASE.from('view_yield_chart').select('*').or(`and(year.eq.${year},quarter.eq.${q}),year.is.null`).order('line_code');
+      if (error) return ylErr('차트 조회', error);
+      // 해당 분기 실적이 없는 라인은 목표/LSL만 표시
+      const byLine = {};
+      (data || []).forEach(r => { if (!byLine[r.line_code] || r.year) byLine[r.line_code] = r; });
+      const rows = yl.lines.map(l => byLine[l.line_code] || { line_code: l.line_code, line_name: l.line_name, target_yield: l.target_yield, lsl_standard: l.lsl_standard });
+      const n = v => (v == null ? null : Number(v));
+      Chart.defaults.color = '#cbd5e1';
+      Chart.defaults.borderColor = '#334155';
+      if (yl.chart) yl.chart.destroy();
+      yl.chart = new Chart(document.getElementById('yl-chart').getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: rows.map(r => r.line_name),
+          datasets: [
+            { label: '목표 수율', data: rows.map(r => n(r.target_yield)), backgroundColor: '#93c5fd' },
+            { label: 'LSL 기준', data: rows.map(r => n(r.lsl_standard)), backgroundColor: '#fca5a5' },
+            { label: '실제 평균', data: rows.map(r => n(r.actual_avg_yield)), backgroundColor: '#3b82f6' },
+            { label: '보정 후 수율', data: rows.map(r => n(r.adjusted_yield)), backgroundColor: '#10b981' }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { y: { min: 80, max: 100, title: { display: true, text: '수율 (%)' } } },
+          plugins: { legend: { position: 'bottom' }, tooltip: { mode: 'index', intersect: false } }
+        }
+      });
+      const f = (v, d = 2) => v == null ? '-' : Number(v).toFixed(d);
+      document.getElementById('yl-table').innerHTML = rows.map(r => `<tr class="border-b border-slate-800">
+        <td class="py-1.5 font-bold text-fuchsia-300">${esc(r.line_name)}</td><td>${r.batch_count ?? '-'}</td>
+        <td>${f(r.target_yield)}</td><td>${f(r.lsl_standard)}</td><td>${f(r.actual_avg_yield, 3)}</td>
+        <td class="text-amber-300">${r.actual_avg_yield == null ? '-' : f(r.lsl_adjustment, 3)}</td>
+        <td class="font-bold text-emerald-400">${f(r.adjusted_yield, 3)}</td></tr>`).join('') || '<tr><td colspan="7" class="py-3 text-slate-500">라인을 등록하세요.</td></tr>';
     }
 
     // Initialize
